@@ -5,6 +5,8 @@ import cv2
 import keyboard
 import pygetwindow as gw
 import pytesseract
+import pyautogui
+
 from PIL import ImageGrab
 
 # =========================================================================
@@ -146,12 +148,12 @@ def perform_ocr_and_parse(img_path):
     found_life = None
     found_res = {}
     
-    price_str = "1"
+    price_jah = 1
 
     # 1. 提取 LIFE
     life_match = re.search(r"(\+?\d+)\s*(TO)?\s*LIFE", cleaned_text)
     if life_match:
-        found_life = "".join(c for c in life_match.group(1) if c.isdigit())
+        found_life = int("".join(c for c in life_match.group(1) if c.isdigit()))
         memory["life"] = found_life
 
     # 2. 提取抗性 (RESIST)
@@ -169,7 +171,7 @@ def perform_ocr_and_parse(img_path):
             val = res_match.group(1) or res_match.group(3)
             clean_val = "".join(c for c in val if c.isdigit())
             if clean_val:
-                clean_val += "%"
+                clean_val = int(clean_val)
                 found_res[res_name] = clean_val
                 memory["resistances"][res_name] = clean_val
 
@@ -184,15 +186,162 @@ def perform_ocr_and_parse(img_path):
         print("No Life or Resistance modifiers detected on this item.")
 
     if found_res and found_life:
-        price_str = "4"
+        price_jah = 4
     elif found_res or found_life:
-        price_str = "3"
+        price_jah = 3
     else:
-        price_str = "2"
-    memory["price"] = price_str
+        price_jah = 2
+    memory["price"] = price_jah
     
-    print(f"❤️ price set: +{memory["price"]}")
+    print(f"❤️ price set: {memory["price"]} JAH")
 
+def fill_tradie_jewel():
+    print("【請注意】請在 5 秒內將畫面倒換回您的 Chrome 交易頁面，並確保輸入法為『英文半形』！")
+    print("將游標點擊在網頁的第一個輸入欄位（通常是聯賽、種類或第一個屬性搜尋框）。")
+    
+    # 給予使用者 5 秒鐘切換到 Chrome 視窗
+    for i in range(5, 0, -1):
+        print(f"倒數 {i} 秒...")
+        time.sleep(1)
+        
+    print("開始自動填寫...")
+    pyautogui.press('tab')
+    time.sleep(1)
+    pyautogui.press('tab')    
+    time.sleep(1)
+    pyautogui.press('tab')    
+    time.sleep(1)
+    pyautogui.press('tab')    
+    time.sleep(1)
+
+    print("Start")
+    time.sleep(1)
+    
+    print("Non Ladder")
+#    pyautogui.write("Non Ladder")
+#    pyautogui.press('enter')       # 選取該屬性
+    pyautogui.press('tab')
+    time.sleep(2)
+
+
+    print("rare")    
+    pyautogui.write("rare")
+    pyautogui.press('enter')       # 選取該屬性
+    pyautogui.press('tab')
+    time.sleep(2)
+
+ #   pyautogui.write("PC")
+ #   pyautogui.press('enter')       # 選取該屬性
+    pyautogui.press('tab')
+    time.sleep(2)
+
+    print("middle already in sc")
+    time.sleep(2)
+
+#    pyautogui.write("softcore")
+#    pyautogui.press('enter')       # 選取該屬性
+    pyautogui.press('tab')
+    time.sleep(2)
+
+    pyautogui.press('tab')
+    time.sleep(10)
+    print("middle prepare to enter warlock")
+    pyautogui.press('tab')
+#    pyautogui.write("reign of warlock")
+#    pyautogui.press('enter')       # 選取該屬性
+    time.sleep(2)
+
+
+    print("enter reqirement")
+    # 3. 屬性 1: 15 Requirement (15% 需求降低等相關屬性)
+    # 先輸入關鍵字搜尋屬性，再按 Tab 到數值欄位輸入 15
+    pyautogui.write("Requirement")
+    time.sleep(0.5)               # 等待網頁下拉選單出現
+    pyautogui.press('enter')       # 選取該屬性
+    time.sleep(0.5)
+
+    # 4. 屬性 2: 20 poison damage
+    pyautogui.write("poison damage")
+    time.sleep(0.5)               # 等待網頁下拉選單出現
+    pyautogui.press('enter')       # 選取該屬性
+    time.sleep(0.5)
+    pyautogui.hotkey('shift', 'tab')
+    time.sleep(0.5)
+    pyautogui.hotkey('shift', 'tab')    
+    time.sleep(0.5)
+    pyautogui.write("20")    
+    time.sleep(0.5)
+    pyautogui.press('tab')
+    time.sleep(0.5)
+    pyautogui.press('tab')    
+    time.sleep(0.5)
+
+    pyautogui.write("Required")
+    time.sleep(0.5)               # 等待網頁下拉選單出現
+    pyautogui.press('enter')       # 選取該屬性
+    time.sleep(0.5)
+    pyautogui.hotkey('shift', 'tab')
+    time.sleep(0.5)
+    pyautogui.hotkey('shift', 'tab')    
+    time.sleep(0.5)
+    pyautogui.write("1")    
+    time.sleep(0.5)
+    pyautogui.press('tab')
+    time.sleep(0.5)
+    pyautogui.press('tab')    
+    time.sleep(0.5)
+
+    if memory["life"] is not None:
+        pyautogui.write("+X to Life")
+        time.sleep(0.5)               # 等待網頁下拉選單出現
+        pyautogui.press('enter')       # 選取該屬性
+        time.sleep(0.5)
+        pyautogui.hotkey('shift', 'tab')
+        time.sleep(0.5)
+        pyautogui.hotkey('shift', 'tab')    
+        time.sleep(0.5)
+        # 使用 str() 強制轉換成字串後再輸入
+        pyautogui.write(str(memory["life"]))
+        time.sleep(0.5)
+        pyautogui.press('tab')
+        time.sleep(0.5)
+        pyautogui.press('tab')    
+        time.sleep(0.5)
+
+    
+#shift tab x 2
+#20
+#tab x 2    
+    
+    
+    pyautogui.press('tab')
+    time.sleep(0.5)
+    pyautogui.press('tab')
+    time.sleep(0.5)
+    pyautogui.press('tab')
+    time.sleep(0.5)
+    pyautogui.press('tab')
+    time.sleep(0.5)
+    #exit to price area
+
+    # 5. 填寫價格 Price (2 jah)
+    # 通常價格分為「數量」欄位與「貨幣種類」欄位
+
+    pyautogui.write("jah")
+    time.sleep(3)
+    pyautogui.press('enter')
+    time.sleep(0.5)
+    pyautogui.press('tab')
+    time.sleep(0.5)
+    pyautogui.press('tab')
+    time.sleep(0.5)
+    pyautogui.press('tab')
+    time.sleep(0.5)
+    pyautogui.write(str(memory["price"]))
+    time.sleep(0.5)
+    pyautogui.press('enter')    
+    time.sleep(0.5)
+    print("填寫完成！")
 
 def on_f10_pressed():
     try:
@@ -207,27 +356,11 @@ def on_f10_pressed():
         print(f"An unexpected error occurred during F10 processing: {e}")
 
 
-def on_f11_pressed():
+def on_f9_pressed():
     print("\n========================================")
-    print("  [F11 Memory Recall - Session History]  ")
+    print("  [f9 fill in]  ")
     print("========================================")
-
-    has_data = False
-    if memory["life"]:
-        print(f"❤️ Remembered Life value: +{memory['life']}")
-        has_data = True
-
-    if memory["resistances"]:
-        print("🛡️ Remembered Resistances:")
-        for k, v in memory["resistances"].items():
-            print(f"  - {k}: {v}")
-        has_data = True
-
-    print(f" Ready to send trade price set: +{memory["price"]}")
-    
-
-    if not has_data:
-        print("Memory is clean. Press [F10] on an item first!")
+    fill_tradie_jewel()
     print("========================================\n")
 
 
@@ -236,11 +369,12 @@ if __name__ == "__main__":
     print("📌 Run Diablo II: Resurrected in [Windowed] or [Borderless] mode.")
     print("⌨️ Keybindings:")
     print("   [F10] -> Capture, Crop, Fix Font Errors & Extract target stats")
-    print("   [F11] -> Display last stored Life/Resist values on screen")
+    print("   [f9] -> Display last stored Life/Resist values on screen")
     print("   [Ctrl + C] -> Exit Script")
     print("============================================")
 
     keyboard.add_hotkey("f10", on_f10_pressed)
-    keyboard.add_hotkey("f11", on_f11_pressed)
+    keyboard.add_hotkey("f9", on_f9_pressed)
 
     keyboard.wait()
+

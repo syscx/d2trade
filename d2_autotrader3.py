@@ -121,10 +121,23 @@ def process_trading_workflow(image_path):
                 print("   -> 網頁編輯器尾端 BIN 追加填寫成功！")
             except: pass
 
-            print("\n【👍 全自動處理完成】請手動確認並點擊上架。完成後【直接關閉網頁視窗】即可繼續下一件！")
-            page.wait_for_event("close")
-            print("視窗已關閉，安全釋放沙盒鎖..."); browser_context.close()
-    except Exception as e: print(f"網頁自動化錯誤: {e}")
+            print("\n【👍 全自動處理完成】請手動確認並點擊上架。")
+            print("👉 提示：點擊上架成功網頁跳轉後，或手動「直接關閉網頁視窗」皆可繼續下一件！")
+            
+            # 【關鍵修改 1】：將 timeout 設為 0（無限等待），這樣你慢慢看、慢慢改都不會超時拋出異常
+            # 【關鍵修改 2】：使用 try-except 包裹，不論是手動關閉視窗還是程式結束，都能優雅釋放
+            try:
+                # 同時監聽「視窗被關閉」或「URL 改變 (代表點擊提交成功跳轉了)」
+                # 這裡為了保險，先使用無限期等待關閉視窗
+                page.wait_for_event("close", timeout=0)
+            except Exception:
+                pass
+                
+            print("視窗已關閉，安全釋放沙盒鎖...")
+            browser_context.close()
+            
+    except Exception as e: 
+        print(f"網頁自動化錯誤: {e}")
 
 def on_f9_pressed():
     global IS_RUNNING
