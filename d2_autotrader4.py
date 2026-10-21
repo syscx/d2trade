@@ -68,8 +68,8 @@ def process_trading_workflow(context, image_path, task_id):
     print(f"[{task_id}] 2. 正在共享環境中開啟網頁視窗...")
     page = None
     try:
-        # 檢查目前有沒有預設打開但沒在用的空白頁，有就直接拿來用，沒有才開新的
         existing_pages = context.pages
+        # 【核心修正】：指定引索 [0] 來讀取清單中的分頁網址，避免 list 報錯
         if len(existing_pages) == 1 and existing_pages[0].url == "about:blank":
             page = existing_pages[0]
             print(f"[{task_id}] ➔ 復用初始空白瀏覽器視窗。")
@@ -77,21 +77,51 @@ def process_trading_workflow(context, image_path, task_id):
             page = context.new_page()
             print(f"[{task_id}] ➔ 開啟全新獨立視窗。")
             
-        print(f"[{task_id}] 🚀 空降至 diablo2.io 商品建立頁面...")
+        print(f"[{task_id}] 🚀 空降至 diablo2.io 交易市場...")
         page.goto("https://diablo2.io")
+        page.wait_for_load_state("networkidle")
         
-        # 檢查是否需要登入（如果共享 Cookie 有效，這邊會直接跳過）
-        if "login" in page.url or page.locator("input[type='file']").count() == 0:
-            print(f"\n[{task_id}] 【⚠️ 偵測到未登入】請在此視窗完成登入，完成後本系統將永久記住登入狀態！")
+        # 檢查是否因為廣告牆阻擋導致流程卡死
+        try:
+            close_ad = page.locator("text=Close").first
+            if close_ad.is_visible():
+                close_ad.click()
+                print(f"[{task_id}] ➔ 偵測到廣告擋牆提示，已全自動幫您關閉。")
+        except: pass
+
+        print(f"[{task_id}] ➔ 正在嘗試自動點擊 'Create New Trade' 按鈕...")
+        create_btn = page.locator("a:has-text('Create New Trade'), button:has-text('Create New Trade'), .btn:has-text('Create New Trade')").first
+        
+        try:
+            create_btn.wait_for(state="visible", timeout=8000)
+            create_btn.click()
+            print(f"[{task_id}] 👍 成功自動點擊 'Create New Trade'！")
+        except Exception:
+            print(f"[{task_id}] ⚠️ 沒看到 'Create New Trade' 按鈕，嘗試使用後備網址跳轉...")
+            page.goto("https://diablo2.io#newtrade")
+
+        # 尋找檔案上傳按鈕，放寬等待限制為只要掛載（attached）到網頁 DOM 樹就抓取
+        file_input = page.locator("input[type='file']").first
+        try:
+            file_input.wait_for(state="attached", timeout=10000)
+            page.wait_for_timeout(800)  # 給予彈出對話框動畫就緒的硬緩衝時間
+        except Exception:
+            print(f"\n[{task_id}] 【⚠️ 仍找不到上傳控制項】請檢查目前是否為登入狀態！")
             page.wait_for_selector("input[type='file']", state="attached", timeout=60000)
 
-        file_input = page.locator("input[type='file']").first
-        file_input.wait_for(state="attached", timeout=15000)
         print(f"[{task_id}] 3. 正在上傳裝備裁切圖以觸發網頁內建 OCR...")
         file_input.set_input_files(image_path)
         
+        # 強制在網頁內部環境觸發上傳變更事件，確保網頁原生程式碼開始處理圖片
+        page.evaluate('''() => {
+            const input = document.querySelector("input[type='file']");
+            if (input) {
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }''')
+        
         print(f"[{task_id}] 圖片上傳成功，正在等待網頁原生解析器處理...")
-        # 採用非同步等待，不阻塞其他視窗並行處理
         page.wait_for_timeout(6000)
 
         web_ocr_text = page.evaluate('''() => {
@@ -104,8 +134,8 @@ def process_trading_workflow(context, image_path, task_id):
         print(f"[{task_id}] 👍 成功擷取文字！長度: {len(base_text)} 字")
         
         if len(base_text) < 90:
-            print(f"[{task_id}] 擷取文字過短，關閉視窗。")
-            page.close(); return
+            print(f"[{task_id}] 擷取文字過短，可能未成功觸發網頁原生 OCR。")
+            return
 
         ai_price = ask_gemini_to_price_only(base_text)
         price_str = "Look for HR" if not ai_price or any(x in ai_price for x in ["0", "Worthless", "Unknown"]) else ai_price
@@ -130,16 +160,12 @@ def process_trading_workflow(context, image_path, task_id):
 
     except Exception as e: 
         print(f"[{task_id}] 網頁自動化錯誤: {e}")
-        if page:
-            try: page.close()
-            except: pass
     finally:
         if os.path.exists(image_path): 
             try: os.remove(image_path)
             except: pass
 
 def on_f9_pressed():
-    """F9 背景執行緒：只負責高速截圖與視覺裁切，絕不觸碰 Playwright 核心"""
     task_id = uuid.uuid4().hex[:6].upper()
     raw_img = f"raw_{task_id}.png"
     cropped_img = f"crop_{task_id}.jpg"
@@ -149,7 +175,6 @@ def on_f9_pressed():
         detect_and_crop_tooltip(raw_img, cropped_img)
         if os.path.exists(raw_img): os.remove(raw_img)
         
-        # 將處理好的圖片路徑排入佇列，交由主執行緒排隊執行網頁操作
         TASK_QUEUE.put((cropped_img, task_id))
         print(f"[{task_id}] 裝備掃描成功！已排入網頁自動化排程...")
     except Exception as e:
@@ -162,7 +187,6 @@ def main():
     print("正在初始化共享瀏覽器核心，請稍候...")
     
     with sync_playwright() as p:
-        # 啟動持久化瀏覽器核心
         context = p.chromium.launch_persistent_context(
             user_data_dir=PURE_SANDBOX_DIR, 
             headless=False
@@ -171,12 +195,11 @@ def main():
 
         print("\n系統準備就緒！")
         print("👉 請進入 D2R 遊戲，滑鼠指著裝備並按下 [F9] 鍵。")
-        print("👉 系統會自動在同一個 Chrome 中彈出新視窗，並共享同一個帳號登入狀態！")
+        print("👉 系統會自動導向交易區、自動點擊 'Create New Trade' 並進行估價！")
         print("----------------------------------------------------------")
         
         keyboard.add_hotkey('f9', on_f9_pressed)
         
-        # 主執行緒無窮循環監聽佇列，確保 Playwright 在安全執行緒環境中運作
         while True:
             try:
                 cropped_img, task_id = TASK_QUEUE.get_nowait()
@@ -185,7 +208,6 @@ def main():
             except queue.Empty:
                 pass
             
-            # 維持 Playwright 引擎心跳
             try:
                 _ = context.pages
             except:
