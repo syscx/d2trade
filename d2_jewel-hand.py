@@ -291,6 +291,27 @@ def fill_tradie_jewel():
     pyautogui.press('tab')    
     time.sleep(0.5)
 
+    inner_dict = memory.get("resistances", {})
+
+    # 2. 動態遍歷內層的所有鍵值
+    for res_key, res_value in inner_dict.items():
+        print(f"抗性名稱: {res_key}, 數值: {res_value}")
+        pyautogui.write(res_key)
+        time.sleep(0.5)               # 等待網頁下拉選單出現
+        pyautogui.press('enter')       # 選取該屬性
+        time.sleep(0.5)
+        pyautogui.hotkey('shift', 'tab')
+        time.sleep(0.5)
+        pyautogui.hotkey('shift', 'tab')    
+        time.sleep(0.5)
+        pyautogui.write(str(res_value))    
+        time.sleep(0.5)
+        pyautogui.press('tab')
+        time.sleep(0.5)
+        pyautogui.press('tab')    
+        time.sleep(0.5)
+
+
     if memory["life"] is not None:
         pyautogui.write("+X to Life")
         time.sleep(0.5)               # 等待網頁下拉選單出現
