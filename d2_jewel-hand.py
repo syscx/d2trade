@@ -221,35 +221,35 @@ def fill_tradie_jewel():
 #    pyautogui.write("Non Ladder")
 #    pyautogui.press('enter')       # 選取該屬性
     pyautogui.press('tab')
-    time.sleep(2)
+    time.sleep(0.5)
 
 
     print("rare")    
     pyautogui.write("rare")
     pyautogui.press('enter')       # 選取該屬性
     pyautogui.press('tab')
-    time.sleep(2)
+    time.sleep(0.5)
 
  #   pyautogui.write("PC")
  #   pyautogui.press('enter')       # 選取該屬性
     pyautogui.press('tab')
-    time.sleep(2)
+    time.sleep(0.5)
 
     print("middle already in sc")
-    time.sleep(2)
+    time.sleep(0.5)
 
 #    pyautogui.write("softcore")
 #    pyautogui.press('enter')       # 選取該屬性
     pyautogui.press('tab')
-    time.sleep(2)
+    time.sleep(0.5)
 
     pyautogui.press('tab')
-    time.sleep(10)
+    time.sleep(0.5)
     print("middle prepare to enter warlock")
     pyautogui.press('tab')
 #    pyautogui.write("reign of warlock")
 #    pyautogui.press('enter')       # 選取該屬性
-    time.sleep(2)
+    time.sleep(0.5)
 
 
     print("enter reqirement")
