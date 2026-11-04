@@ -1,4 +1,7 @@
 import os, sys, time, json, keyboard, pyautogui, cv2, uuid, queue, threading
+import hashlib
+import sqlite3
+from datetime import datetime, timezone
 import numpy as np
 from PIL import Image, ImageGrab
 import pygetwindow as gw
@@ -13,8 +16,99 @@ except Exception as e:
 # 使用固定的沙盒資料夾，關閉程式後下次開，登入狀態依然會保留
 PURE_SANDBOX_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "d2_shared_sandbox_profile")
 
+# 價格歷史資料庫路徑（與 sandbox profile 同目錄，方便管理）
+PRICE_DB_PATH = os.path.join(os.path.expanduser("~"), "Desktop", "d2_price_history.db")
+
 # 建立一個執行緒安全的任務佇列
 TASK_QUEUE = queue.Queue()
+
+
+# ---------------------------------------------------------------------------
+# Simple Price History DB (SQLite)
+# ---------------------------------------------------------------------------
+class PriceHistoryDB:
+    """Lightweight local cache so identical item texts skip Gemini re-queries."""
+
+    def __init__(self, db_path: str = PRICE_DB_PATH):
+        self.db_path = db_path
+        self._init_db()
+
+    def _init_db(self):
+        os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS price_history (
+                    text_hash   TEXT PRIMARY KEY,
+                    item_text   TEXT NOT NULL,
+                    price       TEXT NOT NULL,
+                    created_at  TEXT NOT NULL,
+                    hit_count   INTEGER DEFAULT 1
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_created_at
+                ON price_history(created_at)
+            """)
+            conn.commit()
+
+    @staticmethod
+    def _normalize(text: str) -> str:
+        """Normalize item text for consistent hashing (whitespace + case)."""
+        return " ".join(text.strip().lower().split())
+
+    @staticmethod
+    def _hash(text: str) -> str:
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    def get(self, item_text: str):
+        """Return cached price string if present, else None."""
+        norm = self._normalize(item_text)
+        if not norm:
+            return None
+        h = self._hash(norm)
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                row = conn.execute(
+                    "SELECT price, hit_count FROM price_history WHERE text_hash = ?",
+                    (h,)
+                ).fetchone()
+                if row:
+                    price, hits = row
+                    conn.execute(
+                        "UPDATE price_history SET hit_count = ? WHERE text_hash = ?",
+                        (hits + 1, h)
+                    )
+                    conn.commit()
+                    return price
+        except Exception as e:
+            print(f"[PriceDB] lookup error: {e}")
+        return None
+
+    def save(self, item_text: str, price: str) -> None:
+        """Insert or update a price entry."""
+        norm = self._normalize(item_text)
+        if not norm or not price:
+            return
+        h = self._hash(norm)
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("""
+                    INSERT INTO price_history (text_hash, item_text, price, created_at, hit_count)
+                    VALUES (?, ?, ?, ?, 1)
+                    ON CONFLICT(text_hash) DO UPDATE SET
+                        price = excluded.price,
+                        created_at = excluded.created_at,
+                        hit_count = hit_count + 1
+                """, (h, item_text[:2000], price, now))
+                conn.commit()
+        except Exception as e:
+            print(f"[PriceDB] save error: {e}")
+
+
+# Global DB instance
+PRICE_DB = PriceHistoryDB()
+
 
 def detect_and_crop_tooltip(f_path, o_path):
     print("正在透過電腦視覺掃描 D2R 提示框...")
@@ -47,12 +141,37 @@ def capture_d2r_screen(r_path):
 
 def ask_gemini_to_price_only(ocr_text):
     print("正在將文字發送至 Gemini 進行最高天價估計...")
+
+    # 1) Check local price history first
+    cached = PRICE_DB.get(ocr_text)
+    if cached is not None:
+        print(f"👉 [PriceDB 快取命中] BIN {cached}")
+        return cached
+
+    # 2) Improved system prompt with few-shot examples + stricter format
     system_prompt = (
-        "You are an aggressive and elite D2R whale-tier market appraiser. "
-        "Estimate the HIGHEST POSSIBLE market value (Premium BIN Price) for wealthy collectors. Do NOT lowball.\n"
-        "Rules: Valuable items in High Runes (e.g., '5x Jah', '3x Ber'). Mid items in Perfect Amethysts ('40 PA'). Small charms in '5 PGems'. "
-        "If worthless, output exactly '0 (Worthless)'. Respond ONLY with the final value string without ANY conversation or markdown."
+        "You are an aggressive and elite D2R whale-tier market appraiser for the current Non Ladder / Softcore market. "
+        "Estimate the HIGHEST POSSIBLE market value (Premium BIN Price) that a wealthy collector would pay. "
+        "Do NOT lowball. Prefer High Runes when the item is valuable.\n\n"
+        "Output rules (STRICT):\n"
+        "- Respond ONLY with the final value string. No conversation, no markdown, no explanation.\n"
+        "- Valuable items → High Runes, e.g. '5x Jah', '3x Ber', '2x Lo', '1x Ohm'.\n"
+        "- Mid-tier items → Perfect Amethysts or Perfect Gems, e.g. '40 PA', '25 PGems'.\n"
+        "- Small charms / low value → '5 PGems', '10 PGems'.\n"
+        "- Completely worthless → exactly '0 (Worthless)'.\n\n"
+        "Few-shot examples:\n"
+        "Item: '+20 Life Small Charm'\n"
+        "→ 5 PGems\n\n"
+        "Item: 'Griffon's Eye 15/15'\n"
+        "→ 3x Ber\n\n"
+        "Item: 'Infinity ethereal Thresher 33% ED'\n"
+        "→ 2x Jah\n\n"
+        "Item: 'normal chipped gem'\n"
+        "→ 0 (Worthless)\n\n"
+        "Item: 'Annihilus 20/20/10'\n"
+        "→ 4x Jah"
     )
+
     try:
         res = client.models.generate_content(
             model="gemini-3.8-flash",
@@ -60,9 +179,16 @@ def ask_gemini_to_price_only(ocr_text):
             config={"system_instruction": system_prompt}
         )
         price = res.text.strip()
-        print(f"👉 Gemini 天價估計結果: BIN {price}"); return price
+        # Basic sanitization: take first line only in case model adds extra text
+        price = price.splitlines()[0].strip() if price else "Unknown"
+        print(f"👉 Gemini 天價估計結果: BIN {price}")
+
+        # 3) Persist to history DB
+        PRICE_DB.save(ocr_text, price)
+        return price
     except Exception as e:
-        print(f"Gemini 計價失敗: {e}"); return "Unknown"
+        print(f"Gemini 計價失敗: {e}")
+        return "Unknown"
 
 def process_trading_workflow(context, image_path, task_id):
     print(f"[{task_id}] 2. 正在共享環境中開啟網頁視窗...")
@@ -192,6 +318,7 @@ def main():
             headless=False
         )
         print("🚀 [系統] 共享登入狀態的瀏覽器核心已啟動完成。")
+        print(f"📦 [系統] 價格歷史資料庫: {PRICE_DB_PATH}")
 
         print("\n系統準備就緒！")
         print("👉 請進入 D2R 遊戲，滑鼠指著裝備並按下 [F9] 鍵。")
