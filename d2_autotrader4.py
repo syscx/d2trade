@@ -264,7 +264,12 @@ def process_trading_workflow(context, image_path, task_id):
             return
 
         ai_price = ask_gemini_to_price_only(base_text)
-        price_str = "Look for HR" if not ai_price or any(x in ai_price for x in ["0", "Worthless", "Unknown"]) else ai_price
+        normalized_price = ai_price.strip() if ai_price else ""
+        price_str = (
+            "Look for HR"
+            if not normalized_price or normalized_price.casefold() == "unknown"
+            else normalized_price
+        )
 
         final_description = f"{base_text}\n\nBIN: {price_str}"
         print(f"[{task_id}] 5. 追加填入最高 BIN 價格 (價格: {price_str})...")
