@@ -380,9 +380,8 @@ def process_trading_workflow(context, image_path, task_id):
         print(f"[{task_id}] 4. 判斷 Craft 類型與物品種類...")
         crafted_title = classify_crafted_item_title(ocr_text, task_id)
         if crafted_title:
-            # diablo2.io autocomplete reacts to real keyboard events. The reference
-            # Selenium script types slowly, waits 3 seconds, then uses ArrowDown twice
-            # and Enter. Playwright fill() does not reproduce those per-key events.
+            # Autocomplete is optional. Never press Enter here: on this form Enter
+            # can activate the trade submit action and navigate away.
             try:
                 title_input.click()
                 title_input.press("Control+A")
@@ -391,64 +390,50 @@ def process_trading_workflow(context, image_path, task_id):
                 if title_input.input_value().strip() != crafted_title:
                     raise RuntimeError("標題欄位未保留輸入文字")
 
-                print(f"[{task_id}] 已逐字輸入 {crafted_title}；等待網站自動完成選單...")
-                page.wait_for_timeout(3000)
-
-                # Detect a visible suggestion/menu before pressing Enter. This avoids
-                # accidentally submitting the whole trade form when no dropdown exists.
-                has_visible_suggestion = page.evaluate("""() => {
-                    const selectors = [
-                        '[role="option"]', '[role="listbox"]',
-                        '.ui-autocomplete:visible', '.ui-menu-item',
-                        '.autocomplete-suggestion', '.tt-suggestion',
-                        '[class*="autocomplete"] li', '[class*="suggest"] li',
-                        '[class*="dropdown"] li'
-                    ];
-                    return selectors.some(selector => {
-                        let nodes = [];
-                        try { nodes = Array.from(document.querySelectorAll(selector)); }
-                        catch (_) { return false; }
-                        return nodes.some(el => {
-                            const style = getComputedStyle(el);
-                            return style.display !== 'none' &&
-                                   style.visibility !== 'hidden' &&
-                                   el.getClientRects().length > 0 &&
-                                   (el.innerText || el.textContent || '').trim().length > 0;
-                        });
+                print(f"[{task_id}] 已逐字輸入 {crafted_title}；等待自動完成建議...")
+                page.wait_for_timeout(2500)
+                clicked = page.evaluate("""(target) => {
+                    const input = document.querySelector(
+                        "input[placeholder*='Enter the exact name of the item being traded']"
+                    );
+                    if (!input) return false;
+                    const norm = value => (value || '').trim().toLocaleLowerCase().replace(/\\s+/g, ' ');
+                    const wanted = norm(target);
+                    const inputRect = input.getBoundingClientRect();
+                    const candidates = Array.from(document.querySelectorAll(
+                        '[role="option"], li, .ui-menu-item, .tt-suggestion, ' +
+                        '.autocomplete-suggestion, [class*="suggest"]'
+                    )).filter(el => {
+                        const style = getComputedStyle(el);
+                        const rect = el.getBoundingClientRect();
+                        const text = norm(el.innerText || el.textContent);
+                        const visible = style.display !== 'none' &&
+                                        style.visibility !== 'hidden' &&
+                                        rect.width > 0 && rect.height > 0;
+                        const safeTag = !['FORM', 'BUTTON', 'INPUT', 'TEXTAREA'].includes(el.tagName);
+                        const nearInput = rect.top >= inputRect.top - 20 &&
+                                          rect.top < inputRect.bottom + 260;
+                        return visible && safeTag && nearInput && text === wanted;
+                    }).sort((a, b) => {
+                        const ar = a.getBoundingClientRect(), br = b.getBoundingClientRect();
+                        return (ar.width * ar.height) - (br.width * br.height);
                     });
-                }""")
-
-                if has_visible_suggestion:
-                    # Match the proven keyboard interaction from fixd2iov4.py.
-                    title_input.press("ArrowDown")
-                    page.wait_for_timeout(350)
-                    title_input.press("ArrowDown")
-                    page.wait_for_timeout(350)
-                    title_input.press("Enter")
-                    page.wait_for_timeout(700)
-                    print(f"[{task_id}] 已執行自動完成選單鍵盤選取。")
+                    if (!candidates.length) return false;
+                    candidates[0].dispatchEvent(new MouseEvent('mousedown', {bubbles:true}));
+                    candidates[0].dispatchEvent(new MouseEvent('mouseup', {bubbles:true}));
+                    candidates[0].click();
+                    return true;
+                }""", crafted_title)
+                if clicked:
+                    print(f"[{task_id}] 已用滑鼠事件選取完全符合的自動完成項目。")
                 else:
-                    print(
-                        f"[{task_id}] 未偵測到可見的自動完成選單；"
-                        "保留已輸入標題並繼續 Gemini 估價，不阻擋流程。"
-                    )
-
-                if title_input.input_value().strip() != crafted_title:
-                    print(
-                        f"[{task_id}] 選單操作後標題值有變化；"
-                        "恢復分類標題並繼續，不中斷估價。"
-                    )
-                    title_input.fill(crafted_title)
+                    print(f"[{task_id}] 未找到安全且完全符合的下拉項目；保留標題並繼續 Gemini。")
+                # Verify the form is still present; autocomplete must never navigate away.
+                if title_input.count() == 0 or not title_input.is_visible():
+                    print(f"[{task_id}] 自動完成後標題欄位不存在；不再操作頁面，價格流程仍嘗試繼續。")
                 ocr_title = crafted_title
             except Exception as e:
-                # Autocomplete is best-effort only. It must never prevent OCR text
-                # from reaching Gemini or stop price insertion.
-                print(f"[{task_id}] 自動完成選取未成功（{e}）；保留標題並繼續 Gemini。")
-                try:
-                    if title_input.input_value().strip() != crafted_title:
-                        title_input.fill(crafted_title)
-                except Exception as restore_error:
-                    print(f"[{task_id}] 標題恢復失敗：{restore_error}")
+                print(f"[{task_id}] 自動完成未選取（{e}）；保留標題並繼續 Gemini。")
                 ocr_title = crafted_title
         else:
             print(f"[{task_id}] 無法可靠分類為指定 Craft 類型，保留網站 OCR 標題。")
@@ -459,6 +444,12 @@ def process_trading_workflow(context, image_path, task_id):
             price_line = ask_gemini_recommended_price(ocr_text)
         else:
             price_line = f"BIN: {estimate}"
+        # Do not attempt form writes after an unexpected navigation.
+        if page.is_closed() or "/posting.php?mode=post" not in page.url:
+            raise RuntimeError(
+                f"diablo2.io 表單已離開或被導向（{page.url}）；"
+                "為避免誤寫其他頁面，停止價格回填。請確認未提交交易。"
+            )
         # Preserve the OCR textarea without firing its input/change handlers:
         # the site listens to edits there and may restart its own OCR/parser,
         # replacing valid OCR text with a transient "Parsing..." status.
