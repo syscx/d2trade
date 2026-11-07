@@ -20,7 +20,7 @@ PURE_SANDBOX_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "d2_shared_s
 PRICE_DB_PATH = os.path.join(os.path.expanduser("~"), "Desktop", "d2_price_history.db")
 
 # 建立一個執行緒安全的任務佇列
-TASK_QUEUE = queue.Queue()
+TASK_QUEUE = queue.Queue(maxsize=1)
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +61,7 @@ class PriceHistoryDB:
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
     def get(self, item_text: str):
-        """Return cached price string if present, else None."""
+        """Return a cached price only while it is fresh (24-hour TTL)."""
         norm = self._normalize(item_text)
         if not norm:
             return None
@@ -69,25 +69,31 @@ class PriceHistoryDB:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 row = conn.execute(
-                    "SELECT price, hit_count FROM price_history WHERE text_hash = ?",
+                    "SELECT price, created_at, hit_count FROM price_history WHERE text_hash = ?",
                     (h,)
                 ).fetchone()
-                if row:
-                    price, hits = row
-                    conn.execute(
-                        "UPDATE price_history SET hit_count = ? WHERE text_hash = ?",
-                        (hits + 1, h)
-                    )
-                    conn.commit()
-                    return price
+                if not row:
+                    return None
+                price, created_at, hits = row
+                try:
+                    created = datetime.fromisoformat(created_at)
+                    if created.tzinfo is None:
+                        created = created.replace(tzinfo=timezone.utc)
+                    age = (datetime.now(timezone.utc) - created).total_seconds()
+                except (TypeError, ValueError):
+                    age = float("inf")
+                if age < 0 or age > 86400:
+                    return None
+                conn.execute("UPDATE price_history SET hit_count = ? WHERE text_hash = ?", (hits + 1, h))
+                conn.commit()
+                return price
         except Exception as e:
             print(f"[PriceDB] lookup error: {e}")
         return None
-
     def save(self, item_text: str, price: str) -> None:
         """Insert or update a price entry."""
         norm = self._normalize(item_text)
-        if not norm or not price:
+        if not norm or not price or price.strip().casefold() in {"unknown", "n/a", "error"}:
             return
         h = self._hash(norm)
         now = datetime.now(timezone.utc).isoformat()
@@ -191,109 +197,67 @@ def ask_gemini_to_price_only(ocr_text):
 
 def process_trading_workflow(context, image_path, task_id):
     print(f"[{task_id}] 2. 正在共享環境中開啟網頁視窗...")
-    page = None
     try:
-        existing_pages = context.pages
-        # 【核心修正】：指定引索 [0] 來讀取清單中的分頁網址，避免 list 報錯
-        if len(existing_pages) == 1 and existing_pages[0].url == "about:blank":
-            page = existing_pages[0]
-            print(f"[{task_id}] ➔ 復用初始空白瀏覽器視窗。")
-        else:
-            page = context.new_page()
-            print(f"[{task_id}] ➔ 開啟全新獨立視窗。")
-            
-        print(f"[{task_id}] 🚀 空降至 diablo2.io 交易市場...")
-        page.goto("https://diablo2.io")
-        page.wait_for_load_state("networkidle")
-        
-        # 檢查是否因為廣告牆阻擋導致流程卡死
+        pages = context.pages
+        page = pages[0] if len(pages) == 1 and pages[0].url == "about:blank" else context.new_page()
+        page.set_default_timeout(15000)
+        page.goto("https://diablo2.io", wait_until="domcontentloaded", timeout=30000)
         try:
             close_ad = page.locator("text=Close").first
-            if close_ad.is_visible():
-                close_ad.click()
-                print(f"[{task_id}] ➔ 偵測到廣告擋牆提示，已全自動幫您關閉。")
-        except: pass
-
-        print(f"[{task_id}] ➔ 正在嘗試自動點擊 'Create New Trade' 按鈕...")
+            if close_ad.is_visible(timeout=1000):
+                close_ad.click(timeout=2000)
+        except Exception:
+            pass
         create_btn = page.locator("a:has-text('Create New Trade'), button:has-text('Create New Trade'), .btn:has-text('Create New Trade')").first
-        
         try:
             create_btn.wait_for(state="visible", timeout=8000)
-            create_btn.click()
-            print(f"[{task_id}] 👍 成功自動點擊 'Create New Trade'！")
+            create_btn.click(timeout=5000)
         except Exception:
-            print(f"[{task_id}] ⚠️ 沒看到 'Create New Trade' 按鈕，嘗試使用後備網址跳轉...")
-            page.goto("https://diablo2.io#newtrade")
-
-        # 尋找檔案上傳按鈕，放寬等待限制為只要掛載（attached）到網頁 DOM 樹就抓取
+            page.goto("https://diablo2.io#newtrade", wait_until="domcontentloaded", timeout=30000)
         file_input = page.locator("input[type='file']").first
-        try:
-            file_input.wait_for(state="attached", timeout=10000)
-            page.wait_for_timeout(800)  # 給予彈出對話框動畫就緒的硬緩衝時間
-        except Exception:
-            print(f"\n[{task_id}] 【⚠️ 仍找不到上傳控制項】請檢查目前是否為登入狀態！")
-            page.wait_for_selector("input[type='file']", state="attached", timeout=60000)
-
-        print(f"[{task_id}] 3. 正在上傳裝備裁切圖以觸發網頁內建 OCR...")
+        file_input.wait_for(state="attached", timeout=15000)
+        print(f"[{task_id}] 3. 正在上傳裝備裁切圖以觸發網頁 OCR...")
+        # Playwright set_input_files triggers native input/change events; do not dispatch duplicates.
         file_input.set_input_files(image_path)
-        
-        # 強制在網頁內部環境觸發上傳變更事件，確保網頁原生程式碼開始處理圖片
-        page.evaluate('''() => {
-            const input = document.querySelector("input[type='file']");
-            if (input) {
-                input.dispatchEvent(new Event('change', { bubbles: true }));
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-        }''')
-        
-        print(f"[{task_id}] 圖片上傳成功，正在等待網頁原生解析器處理...")
-        page.wait_for_timeout(6000)
-
-        web_ocr_text = page.evaluate('''() => {
-            const ed = document.querySelector('[contenteditable="true"], .cke_editable, .mce-content-body, textarea');
-            if (ed) return ed.tagName === 'TEXTAREA' ? ed.value : ed.innerText;
-            return "";
-        }''')
-        
-        base_text = web_ocr_text.strip() if web_ocr_text.strip() else "D2R Item Tooltip Captured"
-        print(f"[{task_id}] 👍 成功擷取文字！長度: {len(base_text)} 字")
-        
-        if len(base_text) < 90:
-            print(f"[{task_id}] 擷取文字過短，可能未成功觸發網頁原生 OCR。")
-            return
-
-        ai_price = ask_gemini_to_price_only(base_text)
-        normalized_price = ai_price.strip() if ai_price else ""
-        price_str = (
-            "Look for HR"
-            if not normalized_price or normalized_price.casefold() == "unknown"
-            else normalized_price
-        )
-
-        final_description = f"{base_text}\n\nBIN: {price_str}"
-        print(f"[{task_id}] 5. 追加填入最高 BIN 價格 (價格: {price_str})...")
-        
-        try:
-            page.evaluate(''' (text) => {
-                const eds = document.querySelectorAll('[contenteditable="true"], .cke_editable, .mce-content-body, textarea');
-                eds.forEach(el => {
-                    if (el.tagName === 'TEXTAREA') { el.value = text; } 
-                    else { el.innerText = text; }
-                    el.dispatchEvent(new Event('input', { bubbles: true }));
-                });
-            } ''', final_description)
-            print(f"[{task_id}] -> BIN 追加填寫成功！")
-        except: pass
-
-        print(f"\n[{task_id}] 【👍 全自動處理完成】請手動確認並點擊上架。")
-        print(f"👉 處理完畢後，直接關閉該網頁視窗即可！\n")
-
-    except Exception as e: 
-        print(f"[{task_id}] 網頁自動化錯誤: {e}")
+        selector = '[contenteditable="true"], .cke_editable, .mce-content-body, textarea'
+        print(f"[{task_id}] 正在等待 OCR 完成（最多 25 秒）...")
+        page.wait_for_function("""(selector) => Array.from(document.querySelectorAll(selector)).some(el => {
+            const r = el.getBoundingClientRect();
+            const value = el.tagName === 'TEXTAREA' ? el.value : el.innerText;
+            return r.width > 0 && r.height > 0 && value && value.trim().length >= 90;
+        })""", arg=selector, timeout=25000)
+        result = page.evaluate("""(selector) => {
+            const nodes = Array.from(document.querySelectorAll(selector));
+            const candidates = nodes.map((el, index) => {
+                const r = el.getBoundingClientRect();
+                const value = el.tagName === 'TEXTAREA' ? el.value : el.innerText;
+                return {index, visible: r.width > 0 && r.height > 0, text: (value || '').trim()};
+            }).filter(x => x.visible && x.text.length >= 90).sort((a,b) => b.text.length-a.text.length);
+            return candidates.length ? candidates[0] : null;
+        }""", selector)
+        if not result or len(result['text']) < 90 or 'D2R Item Tooltip Captured' in result['text']:
+            raise RuntimeError("OCR 文字未通過完整性檢查；停止填入交易表單。")
+        base_text = result['text'].strip()
+        print(f"[{task_id}] OCR 擷取完成，長度: {len(base_text)} 字")
+        estimate = ask_gemini_to_price_only(base_text)
+        price = estimate if estimate and estimate.casefold() != "unknown" else "Price estimate unavailable — please price manually"
+        final_description = f"{base_text}\n\nBIN: {price}"
+        editor = page.locator(selector).nth(result['index'])
+        editor.wait_for(state="visible", timeout=5000)
+        editor.fill(final_description, timeout=10000)
+        actual = editor.input_value() if editor.evaluate("el => el.tagName === 'TEXTAREA'") else editor.inner_text()
+        if actual.strip() != final_description.strip():
+            raise RuntimeError("交易描述欄位回讀驗證失敗；請勿上架。")
+        print(f"[{task_id}] 【完成】已填入並回讀驗證單一描述欄位。")
+        print("請人工確認物品文字與價格，再自行點擊上架。")
+    except Exception as e:
+        print(f"[{task_id}] 工作流程停止：{type(e).__name__}: {e}")
     finally:
-        if os.path.exists(image_path): 
-            try: os.remove(image_path)
-            except: pass
+        if os.path.exists(image_path):
+            try:
+                os.remove(image_path)
+            except OSError as e:
+                print(f"[{task_id}] 無法清理暫存圖片 {image_path}: {e}")
 
 def on_f9_pressed():
     task_id = uuid.uuid4().hex[:6].upper()
