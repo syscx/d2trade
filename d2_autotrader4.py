@@ -196,60 +196,93 @@ def ask_gemini_to_price_only(ocr_text):
         return "Unknown"
 
 def process_trading_workflow(context, image_path, task_id):
-    print(f"[{task_id}] 2. 正在共享環境中開啟網頁視窗...")
+    """Upload the tooltip to diablo2.io, wait for its OCR, then ask Gemini to price the text."""
+    print(f"[{task_id}] 2. 正在開啟 diablo2.io 交易表單...")
     try:
         pages = context.pages
         page = pages[0] if len(pages) == 1 and pages[0].url == "about:blank" else context.new_page()
         page.set_default_timeout(15000)
-        page.goto("https://diablo2.io", wait_until="domcontentloaded", timeout=30000)
-        try:
-            close_ad = page.locator("text=Close").first
-            if close_ad.is_visible(timeout=1000):
-                close_ad.click(timeout=2000)
-        except Exception:
-            pass
-        create_btn = page.locator("a:has-text('Create New Trade'), button:has-text('Create New Trade'), .btn:has-text('Create New Trade')").first
-        try:
-            create_btn.wait_for(state="visible", timeout=8000)
-            create_btn.click(timeout=5000)
-        except Exception:
-            page.goto("https://diablo2.io#newtrade", wait_until="domcontentloaded", timeout=30000)
-        file_input = page.locator("input[type='file']").first
-        file_input.wait_for(state="attached", timeout=15000)
-        print(f"[{task_id}] 3. 正在上傳裝備裁切圖以觸發網頁 OCR...")
-        # Playwright set_input_files triggers native input/change events; do not dispatch duplicates.
-        file_input.set_input_files(image_path)
-        selector = '[contenteditable="true"], .cke_editable, .mce-content-body, textarea'
-        print(f"[{task_id}] 正在等待 OCR 完成（最多 25 秒）...")
-        page.wait_for_function("""(selector) => Array.from(document.querySelectorAll(selector)).some(el => {
-            const r = el.getBoundingClientRect();
-            const value = el.tagName === 'TEXTAREA' ? el.value : el.innerText;
-            return r.width > 0 && r.height > 0 && value && value.trim().length >= 90;
-        })""", arg=selector, timeout=25000)
-        result = page.evaluate("""(selector) => {
-            const nodes = Array.from(document.querySelectorAll(selector));
-            const candidates = nodes.map((el, index) => {
-                const r = el.getBoundingClientRect();
-                const value = el.tagName === 'TEXTAREA' ? el.value : el.innerText;
-                return {index, visible: r.width > 0 && r.height > 0, text: (value || '').trim()};
-            }).filter(x => x.visible && x.text.length >= 90).sort((a,b) => b.text.length-a.text.length);
-            return candidates.length ? candidates[0] : null;
-        }""", selector)
-        if not result or len(result['text']) < 90 or 'D2R Item Tooltip Captured' in result['text']:
-            raise RuntimeError("OCR 文字未通過完整性檢查；停止填入交易表單。")
-        base_text = result['text'].strip()
-        print(f"[{task_id}] OCR 擷取完成，長度: {len(base_text)} 字")
-        estimate = ask_gemini_to_price_only(base_text)
-        price = estimate if estimate and estimate.casefold() != "unknown" else "Price estimate unavailable — please price manually"
-        final_description = f"{base_text}\n\nBIN: {price}"
-        editor = page.locator(selector).nth(result['index'])
-        editor.wait_for(state="visible", timeout=5000)
-        editor.fill(final_description, timeout=10000)
-        actual = editor.input_value() if editor.evaluate("el => el.tagName === 'TEXTAREA'") else editor.inner_text()
-        if actual.strip() != final_description.strip():
-            raise RuntimeError("交易描述欄位回讀驗證失敗；請勿上架。")
-        print(f"[{task_id}] 【完成】已填入並回讀驗證單一描述欄位。")
-        print("請人工確認物品文字與價格，再自行點擊上架。")
+        page.goto("https://diablo2.io/posting.php?mode=post&f=16", wait_until="domcontentloaded", timeout=30000)
+
+        title_input = page.locator("input[placeholder*='Enter the exact name of the item being traded']").first
+        description_box = page.locator("textarea[placeholder*='Enter any comments about the item being traded']").first
+        title_input.wait_for(state="visible", timeout=15000)
+        description_box.wait_for(state="visible", timeout=15000)
+        before_title = title_input.input_value().strip()
+        before_description = description_box.input_value().strip()
+        print(f"[{task_id}] 已找到交易標題與描述欄位；準備展開圖片附件區...")
+
+        # The screenshot shows this attachment control is collapsed until clicked.
+        attach_toggle = page.get_by_text("Optional: Attach a cropped screenshot of the item", exact=False).first
+        attach_toggle.wait_for(state="visible", timeout=10000)
+        attach_toggle.click()
+        page.wait_for_timeout(300)
+
+        file_inputs = page.locator("input[type='file']")
+        file_inputs.first.wait_for(state="attached", timeout=10000)
+        input_info = page.locator("input[type='file']").evaluate_all("""els => els.map((el, index) => ({
+            index, accept: (el.getAttribute('accept') || '').toLowerCase(),
+            name: el.getAttribute('name') || '',
+            disabled: el.disabled
+        }))""")
+        print(f"[{task_id}] 找到檔案控制項：{input_info}")
+        image_index = next((x['index'] for x in input_info if not x['disabled'] and ('image' in x['accept'] or '.png' in x['accept'] or '.jpg' in x['accept'] or '.jpeg' in x['accept'])), None)
+        if image_index is None and len(input_info) == 1 and not input_info[0]['disabled']:
+            image_index = input_info[0]['index']
+        if image_index is None:
+            raise RuntimeError("展開圖片附件區後，無法唯一確認圖片上傳欄位；停止以避免上傳到錯誤欄位。")
+
+        upload_input = file_inputs.nth(image_index)
+        print(f"[{task_id}] 3. 正在將裁切圖片上傳至 diablo2.io...")
+        upload_input.set_input_files(image_path)
+        uploaded = upload_input.evaluate("el => el.files && el.files.length ? Array.from(el.files).map(f => ({name:f.name,size:f.size,type:f.type})) : []")
+        if not uploaded or uploaded[0]['size'] <= 0:
+            raise RuntimeError("瀏覽器未確認圖片檔案已選取；網站 OCR 尚未開始。")
+        print(f"[{task_id}] 瀏覽器已選取圖片：{uploaded}")
+        # Playwright set_input_files emits the browser's normal input/change events.
+        # Do not dispatch duplicate events: that can start the site's upload handler twice.
+
+        print(f"[{task_id}] 正在等待 diablo2.io 原生 OCR 更新標題或描述欄位（最多 45 秒）...")
+        page.wait_for_function("""(baseline) => {
+            const title = document.querySelector("input[placeholder*='Enter the exact name of the item being traded']");
+            const desc = document.querySelector("textarea[placeholder*='Enter any comments about the item being traded']");
+            if (!title || !desc) return false;
+            const t = (title.value || '').trim();
+            const d = (desc.value || '').trim();
+            const titleChanged = t !== baseline.title && t.length >= 3;
+            const descChanged = d !== baseline.description && d.length >= 40;
+            return titleChanged || descChanged;
+        }""", arg={"title": before_title, "description": before_description}, timeout=45000)
+
+        ocr_title = title_input.input_value().strip()
+        ocr_description = description_box.input_value().strip()
+        ocr_text = "\n".join(part for part in (ocr_title, ocr_description) if part).strip()
+        if len(ocr_text) < 40:
+            raise RuntimeError(f"網站欄位有變動，但 OCR 文字仍不足（{len(ocr_text)} 字）；不呼叫 Gemini。")
+        if ocr_title == before_title and ocr_description == before_description:
+            raise RuntimeError("未偵測到網站 OCR 結果變化；不呼叫 Gemini。")
+        print(f"[{task_id}] diablo2.io OCR 已更新。標題：{ocr_title!r}；描述長度：{len(ocr_description)}")
+        print(f"[{task_id}] 4. 將網站 OCR 文字交給 Gemini 估價...")
+
+        estimate = ask_gemini_to_price_only(ocr_text)
+        if not estimate or estimate.strip().casefold() == "unknown":
+            print(f"[{task_id}] Gemini 未能提供可靠估價；保留網站 OCR 原文，不填入猜測價格。")
+            final_description = ocr_description
+        else:
+            final_description = f"{ocr_description}\n\nBIN: {estimate}" if ocr_description else f"{ocr_text}\n\nBIN: {estimate}"
+            description_box.fill(final_description)
+            if description_box.input_value().strip() != final_description.strip():
+                raise RuntimeError("價格描述欄位回讀驗證失敗；停止。")
+            print(f"[{task_id}] Gemini 估價已追加至描述：{estimate}")
+
+        # Verify the OCR title was not overwritten and the selected image is still attached.
+        if title_input.input_value().strip() != ocr_title:
+            raise RuntimeError("交易標題在估價階段發生非預期變化；停止。")
+        attached_after = upload_input.evaluate("el => !!(el.files && el.files.length && el.files[0].size > 0)")
+        if not attached_after:
+            raise RuntimeError("圖片附件在填寫表單後遺失；請勿提交。")
+        print(f"[{task_id}] 【完成】網站 OCR、Gemini 估價及欄位驗證完成。")
+        print("請人工確認遊戲模式、平台、物品類別、圖片附件與價格，再自行點擊 Create Trade Listing。")
     except Exception as e:
         print(f"[{task_id}] 工作流程停止：{type(e).__name__}: {e}")
     finally:
