@@ -218,7 +218,7 @@ def ask_gemini_recommended_price(ocr_text):
         return value
     except Exception as e:
         print(f"Gemini 偏高推薦價也失敗: {e}")
-        return "Recommend price: 1 Ist (manual review)"
+        return "Recommend price: MANUAL REVIEW (Gemini unavailable)"
 
 
 def classify_crafted_item_title(ocr_text, task_id):
