@@ -159,50 +159,30 @@ def capture_d2r_screen(r_path):
         raise RuntimeError("遊戲截圖為空或檔案尺寸異常。")
     return r_path
 def ask_gemini_to_price_only(ocr_text):
-    print("正在將文字發送至 Gemini 進行最高天價估計...")
-
-    # 1) Check local price history first
+    """Return a cautious estimate; never invent a fallback price."""
+    print("正在將文字發送至 Gemini 估價...")
     cached = PRICE_DB.get(ocr_text)
     if cached is not None:
         print(f"👉 [PriceDB 快取命中] BIN {cached}")
         return cached
-
-    # 2) Improved system prompt with few-shot examples + stricter format
     system_prompt = (
-        "You are an aggressive and elite D2R whale-tier market appraiser for the current Non Ladder / Softcore market. "
-        "Estimate the HIGHEST POSSIBLE market value (Premium BIN Price) that a wealthy collector would pay. "
-        "Do NOT lowball. Prefer High Runes when the item is valuable.\n\n"
-        "Output rules (STRICT):\n"
-        "- Respond ONLY with the final value string. No conversation, no markdown, no explanation.\n"
-        "- Valuable items → High Runes, e.g. '5x Jah', '3x Ber', '2x Lo', '1x Ohm'.\n"
-        "- Mid-tier items → Perfect Amethysts or Perfect Gems, e.g. '40 PA', '25 PGems'.\n"
-        "- Small charms / low value → '5 PGems', '10 PGems'.\n"
-        "- Completely worthless → exactly '0 (Worthless)'.\n\n"
-        "Few-shot examples:\n"
-        "Item: '+20 Life Small Charm'\n"
-        "→ 5 PGems\n\n"
-        "Item: 'Griffon's Eye 15/15'\n"
-        "→ 3x Ber\n\n"
-        "Item: 'Infinity ethereal Thresher 33% ED'\n"
-        "→ 2x Jah\n\n"
-        "Item: 'normal chipped gem'\n"
-        "→ 0 (Worthless)\n\n"
-        "Item: 'Annihilus 20/20/10'\n"
-        "→ 4x Jah"
+        "You are a cautious Diablo II: Resurrected item-market appraiser. "
+        "Estimate a realistic current asking price, not the highest imaginable price. "
+        "If the item text is incomplete, ambiguous, or lacks important stats, answer exactly 'Unknown'. "
+        "Return one short price string only. Do not invent comparable sales or certainty."
     )
-
     try:
         res = client.models.generate_content(
             model="gemini-3.8-flash",
-            contents=f"Appraise this item text at highest premium value:\n\n{ocr_text}",
+            contents=f"Estimate a realistic D2R market asking price from this OCR text:\n\n{ocr_text}",
             config={"system_instruction": system_prompt}
         )
-        price = res.text.strip()
-        # Basic sanitization: take first line only in case model adds extra text
+        price = (res.text or "").strip()
         price = price.splitlines()[0].strip() if price else "Unknown"
-        print(f"👉 Gemini 天價估計結果: BIN {price}")
-
-        # 3) Persist to history DB
+        if not price or price.casefold() in {"unknown", "n/a", "error"} or len(price) > 80:
+            print("Gemini 無法可靠估價；不會自動填入猜測價格。")
+            return "Unknown"
+        print(f"👉 Gemini 估價結果: BIN {price}")
         PRICE_DB.save(ocr_text, price)
         return price
     except Exception as e:
