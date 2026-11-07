@@ -380,63 +380,76 @@ def process_trading_workflow(context, image_path, task_id):
         print(f"[{task_id}] 4. 判斷 Craft 類型與物品種類...")
         crafted_title = classify_crafted_item_title(ocr_text, task_id)
         if crafted_title:
-            # Set the final title first, then wait for diablo2.io's item autocomplete.
-            # Selecting the database suggestion is important: typing the title alone
-            # does not associate the trade with the site's specific item record.
-            title_input.fill(crafted_title)
-            if title_input.input_value().strip() != crafted_title:
-                raise RuntimeError("Craft 標題回讀驗證失敗；停止。")
+            # diablo2.io autocomplete reacts to real keyboard events. The reference
+            # Selenium script types slowly, waits 3 seconds, then uses ArrowDown twice
+            # and Enter. Playwright fill() does not reproduce those per-key events.
+            try:
+                title_input.click()
+                title_input.press("Control+A")
+                title_input.press("Backspace")
+                title_input.press_sequentially(crafted_title, delay=80)
+                if title_input.input_value().strip() != crafted_title:
+                    raise RuntimeError("標題欄位未保留輸入文字")
 
-            suggestion_selector = (
-                "ul.ui-autocomplete li, .ui-autocomplete li, "
-                ".ui-menu-item, [role='option'], "
-                ".tt-menu .tt-suggestion, .autocomplete-suggestion"
-            )
-            print(f"[{task_id}] 等待 diablo2.io 物品自動完成建議：{crafted_title}...")
-            suggestion_list = page.locator(suggestion_selector)
-            deadline = time.monotonic() + 12
-            selected_suggestion = None
-            while time.monotonic() < deadline:
-                candidates = suggestion_list.evaluate_all("""els => els
-                    .filter(el => {
-                        const style = window.getComputedStyle(el);
-                        return style.display !== 'none' &&
-                               style.visibility !== 'hidden' &&
-                               el.getClientRects().length > 0;
-                    })
-                    .map((el, index) => ({
-                        index,
-                        text: (el.innerText || el.textContent || '').trim()
-                    }))
-                """)
-                normalized_target = " ".join(crafted_title.casefold().split())
-                for candidate in candidates:
-                    normalized_text = " ".join(candidate["text"].casefold().split())
-                    # Only select an exact label match; never click the first arbitrary result.
-                    if normalized_text == normalized_target:
-                        selected_suggestion = candidate["index"]
-                        break
-                if selected_suggestion is not None:
-                    break
-                time.sleep(0.25)
+                print(f"[{task_id}] 已逐字輸入 {crafted_title}；等待網站自動完成選單...")
+                page.wait_for_timeout(3000)
 
-            if selected_suggestion is None:
-                raise RuntimeError(
-                    f"diablo2.io 未在 12 秒內提供完全符合「{crafted_title}」的物品建議；"
-                    "標題已輸入，但尚未連結資料庫項目。請手動選擇建議後再繼續。"
-                )
+                # Detect a visible suggestion/menu before pressing Enter. This avoids
+                # accidentally submitting the whole trade form when no dropdown exists.
+                has_visible_suggestion = page.evaluate("""() => {
+                    const selectors = [
+                        '[role="option"]', '[role="listbox"]',
+                        '.ui-autocomplete:visible', '.ui-menu-item',
+                        '.autocomplete-suggestion', '.tt-suggestion',
+                        '[class*="autocomplete"] li', '[class*="suggest"] li',
+                        '[class*="dropdown"] li'
+                    ];
+                    return selectors.some(selector => {
+                        let nodes = [];
+                        try { nodes = Array.from(document.querySelectorAll(selector)); }
+                        catch (_) { return false; }
+                        return nodes.some(el => {
+                            const style = getComputedStyle(el);
+                            return style.display !== 'none' &&
+                                   style.visibility !== 'hidden' &&
+                                   el.getClientRects().length > 0 &&
+                                   (el.innerText || el.textContent || '').trim().length > 0;
+                        });
+                    });
+                }""")
 
-            visible_suggestions = page.locator(suggestion_selector).filter(
-                has_text=re.compile(rf"^{re.escape(crafted_title)}$")
-            )
-            # Use the exact visible suggestion index found above, then verify the
-            # autocomplete menu closes and the title remains the requested value.
-            page.locator(suggestion_selector).nth(selected_suggestion).click()
-            page.wait_for_timeout(300)
-            if title_input.input_value().strip() != crafted_title:
-                raise RuntimeError("選取物品建議後標題不符；停止。")
-            ocr_title = crafted_title
-            print(f"[{task_id}] 已選取 diablo2.io 完全符合的物品建議：{crafted_title}")
+                if has_visible_suggestion:
+                    # Match the proven keyboard interaction from fixd2iov4.py.
+                    title_input.press("ArrowDown")
+                    page.wait_for_timeout(350)
+                    title_input.press("ArrowDown")
+                    page.wait_for_timeout(350)
+                    title_input.press("Enter")
+                    page.wait_for_timeout(700)
+                    print(f"[{task_id}] 已執行自動完成選單鍵盤選取。")
+                else:
+                    print(
+                        f"[{task_id}] 未偵測到可見的自動完成選單；"
+                        "保留已輸入標題並繼續 Gemini 估價，不阻擋流程。"
+                    )
+
+                if title_input.input_value().strip() != crafted_title:
+                    print(
+                        f"[{task_id}] 選單操作後標題值有變化；"
+                        "恢復分類標題並繼續，不中斷估價。"
+                    )
+                    title_input.fill(crafted_title)
+                ocr_title = crafted_title
+            except Exception as e:
+                # Autocomplete is best-effort only. It must never prevent OCR text
+                # from reaching Gemini or stop price insertion.
+                print(f"[{task_id}] 自動完成選取未成功（{e}）；保留標題並繼續 Gemini。")
+                try:
+                    if title_input.input_value().strip() != crafted_title:
+                        title_input.fill(crafted_title)
+                except Exception as restore_error:
+                    print(f"[{task_id}] 標題恢復失敗：{restore_error}")
+                ocr_title = crafted_title
         else:
             print(f"[{task_id}] 無法可靠分類為指定 Craft 類型，保留網站 OCR 標題。")
         print(f"[{task_id}] OCR 原文（前 500 字）：{ocr_text[:500]}")
