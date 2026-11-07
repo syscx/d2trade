@@ -317,20 +317,60 @@ def process_trading_workflow(context, image_path, task_id):
 
         print(f"[{task_id}] 正在等待 diablo2.io 原生 OCR 更新標題或描述欄位（最多 45 秒）...")
         print(f"[{task_id}] 上傳後欄位初始狀態：title={len(title_input.input_value().strip())} chars, description={len(description_box.input_value().strip())} chars")
-        page.wait_for_function("""(baseline) => {
-            const title = document.querySelector("input[placeholder*='Enter the exact name of the item being traded']");
-            const desc = document.querySelector("textarea[placeholder*='Enter any comments about the item being traded']");
-            if (!title || !desc) return false;
-            const t = (title.value || '').trim();
-            const d = (desc.value || '').trim();
-            const titleChanged = t !== baseline.title && t.length >= 3;
-            const descChanged = d !== baseline.description && d.length >= 40;
-            return titleChanged || descChanged;
-        }""", arg={"title": before_title, "description": before_description}, timeout=45000)
+        # diablo2.io first writes a transient "[Parsing item text ...]" status.
+        # That status is longer than 40 chars, so length/change alone is NOT OCR completion.
+        # Wait for real item text, then require it to remain unchanged for 3 polls.
+        import time
+        deadline = time.monotonic() + 75
+        last_snapshot = None
+        stable_polls = 0
+        ocr_title = ""
+        ocr_description = ""
+        while time.monotonic() < deadline:
+            current_title = title_input.input_value().strip()
+            current_description = description_box.input_value().strip()
+            snapshot = (current_title, current_description)
+            parsing_status = bool(re.search(
+                r"parsing\\s+item\\s+text|processing\\s+(?:image|screenshot)|please\\s+wait",
+                current_description,
+                re.IGNORECASE
+            ))
+            has_item_content = (
+                len(current_description) >= 50
+                and not parsing_status
+                and bool(re.search(
+                    r"defense:|kick damage:|required level:|durability:|resist|damage reduced|life stolen|mana|frost nova|\\[quote\\]",
+                    current_description,
+                    re.IGNORECASE
+                ))
+            )
+            changed_from_baseline = (
+                current_title != before_title or current_description != before_description
+            )
+            if changed_from_baseline and has_item_content:
+                if snapshot == last_snapshot:
+                    stable_polls += 1
+                else:
+                    stable_polls = 0
+                if stable_polls >= 3:
+                    ocr_title, ocr_description = current_title, current_description
+                    break
+            else:
+                stable_polls = 0
+            last_snapshot = snapshot
+            time.sleep(0.5)
+        else:
+            raise RuntimeError(
+                "diablo2.io 尚未提供穩定的 OCR 物品文字（可能仍在 Parsing）；"
+                "為避免把 Parsing 當成物品資料，不會呼叫 Gemini 或修改表單。"
+            )
 
-        ocr_title = title_input.input_value().strip()
-        ocr_description = description_box.input_value().strip()
-        ocr_text = "\n".join(part for part in (ocr_title, ocr_description) if part).strip()
+        # Strip forum quote wrappers but preserve all recognized item lines.
+        ocr_description = re.sub(r"^\\[quote\\]", "", ocr_description, flags=re.IGNORECASE)
+        ocr_description = re.sub(r"\\[/quote\\]$", "", ocr_description, flags=re.IGNORECASE).strip()
+        ocr_text = "\\n".join(part for part in (ocr_title, ocr_description) if part).strip()
+        if len(ocr_text) < 50 or re.search(r"parsing\\s+item\\s+text", ocr_text, re.IGNORECASE):
+            raise RuntimeError("OCR 結果仍是狀態訊息或文字不足；停止以避免錯誤估價。")
         if len(ocr_text) < 40:
             raise RuntimeError(f"網站欄位有變動，但 OCR 文字仍不足（{len(ocr_text)} 字）；不呼叫 Gemini。")
         if ocr_title == before_title and ocr_description == before_description:
