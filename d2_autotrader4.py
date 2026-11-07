@@ -286,43 +286,38 @@ def on_f9_pressed():
 
 def main():
     print("==========================================================")
-    print("  D2R 一鍵 [F9] 安全單執行緒核心 ➔ 支援多視窗並行與登入共用 ")
+    print("  D2R 一鍵 [F9] 安全單執行緒核心 ➔ 共用登入狀態")
     print("==========================================================")
     print("正在初始化共享瀏覽器核心，請稍候...")
-    
     with sync_playwright() as p:
         context = p.chromium.launch_persistent_context(
-            user_data_dir=PURE_SANDBOX_DIR, 
+            user_data_dir=PURE_SANDBOX_DIR,
             headless=False
         )
         print("🚀 [系統] 共享登入狀態的瀏覽器核心已啟動完成。")
         print(f"📦 [系統] 價格歷史資料庫: {PRICE_DB_PATH}")
-
         print("\n系統準備就緒！")
         print("👉 請進入 D2R 遊戲，滑鼠指著裝備並按下 [F9] 鍵。")
-        print("👉 系統會自動導向交易區、自動點擊 'Create New Trade' 並進行估價！")
+        print("👉 系統會自動導向交易區、觸發 OCR 並填入待確認描述。")
+        print("👉 最終上架仍由你手動確認。按 Ctrl+C 可安全退出。")
         print("----------------------------------------------------------")
-        
-        keyboard.add_hotkey('f9', on_f9_pressed)
-        
+        keyboard.add_hotkey("f9", on_f9_pressed)
         try:
             while True:
                 try:
-                cropped_img, task_id = TASK_QUEUE.get(timeout=0.25)
-            except queue.Empty:
-                cropped_img = task_id = None
-            if cropped_img:
+                    cropped_img, task_id = TASK_QUEUE.get(timeout=0.25)
+                except queue.Empty:
+                    cropped_img = task_id = None
+                if cropped_img:
+                    try:
+                        process_trading_workflow(context, cropped_img, task_id)
+                    finally:
+                        TASK_QUEUE.task_done()
                 try:
-                    process_trading_workflow(context, cropped_img, task_id)
-                finally:
-                    TASK_QUEUE.task_done()
-            
-            try:
-                _ = context.pages
-            except:
-                print("[系統] 瀏覽器核心已被關閉，系統安全退出。")
-                break
-                
+                    _ = context.pages
+                except Exception:
+                    print("[系統] 瀏覽器核心已被關閉，系統安全退出。")
+                    break
         except KeyboardInterrupt:
             print("\n[系統] 收到中斷訊號，準備安全退出。")
         finally:
@@ -331,6 +326,5 @@ def main():
                 context.close()
             except Exception:
                 pass
-
 if __name__ == "__main__":
     main()
