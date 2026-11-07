@@ -165,35 +165,92 @@ def capture_d2r_screen(r_path):
         raise RuntimeError("遊戲截圖為空或檔案尺寸異常。")
     return r_path
 def ask_gemini_to_price_only(ocr_text):
-    """Return a cautious estimate; never invent a fallback price."""
+    """Try a realistic price first; return Unknown when the estimate is not defensible."""
     print("正在將文字發送至 Gemini 估價...")
     cached = PRICE_DB.get(ocr_text)
     if cached is not None:
         print(f"👉 [PriceDB 快取命中] BIN {cached}")
         return cached
     system_prompt = (
-        "You are a cautious Diablo II: Resurrected item-market appraiser. "
-        "Estimate a realistic current asking price, not the highest imaginable price. "
-        "If the item text is incomplete, ambiguous, or lacks important stats, answer exactly 'Unknown'. "
-        "Return one short price string only. Do not invent comparable sales or certainty."
+        "You are a Diablo II: Resurrected item-market appraiser. "
+        "Estimate a realistic current asking price using the item's exact stats. "
+        "If the item text is incomplete or the value cannot be estimated responsibly, answer exactly 'Unknown'. "
+        "Return one short price string only; do not invent market evidence."
     )
     try:
         res = client.models.generate_content(
             model="gemini-3.8-flash",
-            contents=f"Estimate a realistic D2R market asking price from this OCR text:\n\n{ocr_text}",
+            contents=f"Estimate a realistic D2R market asking price from this OCR text:\\n\\n{ocr_text}",
             config={"system_instruction": system_prompt}
         )
-        price = (res.text or "").strip()
-        price = price.splitlines()[0].strip() if price else "Unknown"
+        price = (res.text or "").strip().splitlines()[0].strip()
         if not price or price.casefold() in {"unknown", "n/a", "error"} or len(price) > 80:
-            print("Gemini 無法可靠估價；不會自動填入猜測價格。")
+            print("Gemini 無法提供可靠的常規估價，改用偏高推薦價模式。")
             return "Unknown"
-        print(f"👉 Gemini 估價結果: BIN {price}")
         PRICE_DB.save(ocr_text, price)
+        print(f"👉 Gemini 估價結果: {price}")
         return price
     except Exception as e:
-        print(f"Gemini 計價失敗: {e}")
+        print(f"Gemini 常規估價失敗: {e}")
         return "Unknown"
+
+
+def ask_gemini_recommended_price(ocr_text):
+    """Fallback: choose a higher-end but still plausible asking price in Ist."""
+    prompt = (
+        "You are pricing a Diablo II: Resurrected item for a seller who prefers an optimistic listing. "
+        "The normal pricing pass could not produce a reliable estimate. Based only on the item text below, "
+        "choose a higher-than-typical but still plausible asking price in Ist runes. "
+        "Do not choose an absurd jackpot price. If the item is clearly low-value, choose a modest price. "
+        "Return exactly one line: Recommend price: X Ist. X is a concise quantity such as 1, 2, 0.5, or 2x. "
+        "Do not add explanations.\\n\\nItem OCR:\\n" + ocr_text
+    )
+    try:
+        res = client.models.generate_content(model="gemini-3.8-flash", contents=prompt)
+        value = (res.text or "").strip().splitlines()[0].strip()
+        if not value or value.casefold() in {"unknown", "n/a", "error"} or len(value) > 80:
+            raise ValueError("Gemini did not return a usable recommendation")
+        if "ist" not in value.casefold():
+            value = f"Recommend price: {value} Ist"
+        elif not value.casefold().startswith("recommend price:"):
+            value = f"Recommend price: {value}"
+        print(f"👉 Gemini 偏高推薦價: {value}")
+        return value
+    except Exception as e:
+        print(f"Gemini 偏高推薦價也失敗: {e}")
+        return "Recommend price: 1 Ist (manual review)"
+
+
+def classify_crafted_item_title(ocr_text, task_id):
+    """Classify recipe family and item type for a concise diablo2.io title."""
+    prompt = (
+        "Classify this Diablo II: Resurrected item. Return JSON only with keys: "
+        "is_crafted (boolean), craft_type (Blood, Safety, Hit Power, Caster, or None), "
+        "item_type (Boots, Ring, Amulet, or Other), confidence (0 to 1). "
+        "Only mark is_crafted true when OCR stats support a crafted item; do not infer from a random rare item. "
+        "If recipe family or item type is uncertain, use None or Other and lower confidence.\\n\\nOCR text:\\n" + ocr_text
+    )
+    try:
+        res = client.models.generate_content(
+            model="gemini-3.8-flash",
+            contents=prompt,
+            config={"response_mime_type": "application/json"}
+        )
+        data = json.loads((res.text or "").strip())
+        craft = str(data.get("craft_type", "None")).strip().casefold()
+        item_type = str(data.get("item_type", "Other")).strip().casefold()
+        is_crafted = data.get("is_crafted") is True
+        confidence = float(data.get("confidence", 0))
+        craft_map = {"blood": "Blood", "safety": "Safety", "hit power": "Hit Power", "hitpower": "Hit Power", "caster": "Caster"}
+        type_map = {"boots": "Boots", "ring": "Ring", "amulet": "Amulet"}
+        if not is_crafted or confidence < 0.75 or craft not in craft_map or item_type not in type_map:
+            print(f"[{task_id}] Craft 分類不夠確定（{craft}/{item_type}, confidence={confidence:.2f}），保留網站原標題。")
+            return None
+        return f"{craft_map[craft]} {type_map[item_type]}"
+    except Exception as e:
+        print(f"[{task_id}] Craft 分類失敗，保留網站原標題：{e}")
+        return None
+
 
 def process_trading_workflow(context, image_path, task_id):
     """Upload the tooltip to diablo2.io, wait for its OCR, then ask Gemini to price the text."""
@@ -263,19 +320,28 @@ def process_trading_workflow(context, image_path, task_id):
         if ocr_title == before_title and ocr_description == before_description:
             raise RuntimeError("未偵測到網站 OCR 結果變化；不呼叫 Gemini。")
         print(f"[{task_id}] diablo2.io OCR 已更新。標題：{ocr_title!r}；描述長度：{len(ocr_description)}")
+        print(f"[{task_id}] 4. 判斷 Craft 類型與物品種類...")
+        crafted_title = classify_crafted_item_title(ocr_text, task_id)
+        if crafted_title:
+            title_input.fill(crafted_title)
+            if title_input.input_value().strip() != crafted_title:
+                raise RuntimeError("Craft 標題回讀驗證失敗；停止。")
+            ocr_title = crafted_title
+            print(f"[{task_id}] diablo2.io 標題已更新為：{crafted_title}")
+        else:
+            print(f"[{task_id}] 無法可靠分類為指定 Craft 類型，保留網站 OCR 標題。")
         print(f"[{task_id}] OCR 原文（前 500 字）：{ocr_text[:500]}")
-        print(f"[{task_id}] 4. 將網站 OCR 文字交給 Gemini 估價...")
-
+        print(f"[{task_id}] 5. 將網站 OCR 文字交給 Gemini 估價...")
         estimate = ask_gemini_to_price_only(ocr_text)
         if not estimate or estimate.strip().casefold() == "unknown":
-            print(f"[{task_id}] Gemini 未能提供可靠估價；保留網站 OCR 原文，不填入猜測價格。")
-            final_description = ocr_description
+            price_line = ask_gemini_recommended_price(ocr_text)
         else:
-            final_description = f"{ocr_description}\n\nBIN: {estimate}" if ocr_description else f"{ocr_text}\n\nBIN: {estimate}"
-            description_box.fill(final_description)
-            if description_box.input_value().strip() != final_description.strip():
-                raise RuntimeError("價格描述欄位回讀驗證失敗；停止。")
-            print(f"[{task_id}] Gemini 估價已追加至描述：{estimate}")
+            price_line = f"BIN: {estimate}"
+        final_description = f"{ocr_description}\\n\\n{price_line}" if ocr_description else f"{ocr_text}\\n\\n{price_line}"
+        description_box.fill(final_description)
+        if description_box.input_value().strip() != final_description.strip():
+            raise RuntimeError("價格描述欄位回讀驗證失敗；停止。")
+        print(f"[{task_id}] Gemini 價格文字已填入：{price_line}")
 
         # The site can clear the file input after receiving the image for OCR.
         # OCR field changes are the reliable signal here; do not require the
