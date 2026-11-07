@@ -235,14 +235,15 @@ def process_trading_workflow(context, image_path, task_id):
         upload_input = file_inputs.nth(image_index)
         print(f"[{task_id}] 3. 正在將裁切圖片上傳至 diablo2.io...")
         upload_input.set_input_files(image_path)
-        uploaded = upload_input.evaluate("el => el.files && el.files.length ? Array.from(el.files).map(f => ({name:f.name,size:f.size,type:f.type})) : []")
-        if not uploaded or uploaded[0]['size'] <= 0:
-            raise RuntimeError("瀏覽器未確認圖片檔案已選取；網站 OCR 尚未開始。")
-        print(f"[{task_id}] 瀏覽器已選取圖片：{uploaded}")
-        # Playwright set_input_files emits the browser's normal input/change events.
-        # Do not dispatch duplicate events: that can start the site's upload handler twice.
+        # The site may consume the selected file asynchronously and then clear or
+        # replace the file input. A non-empty input.files value is not proof that
+        # the upload failed, so do not use it as an upload-success gate.
+        print(f"[{task_id}] 圖片已交給瀏覽器檔案控制項；等待網站處理與 OCR 回填...")
+        # Playwright set_input_files emits native input/change events. Do not
+        # dispatch duplicates; instead verify the resulting OCR form values.
 
         print(f"[{task_id}] 正在等待 diablo2.io 原生 OCR 更新標題或描述欄位（最多 45 秒）...")
+        print(f"[{task_id}] 上傳後欄位初始狀態：title={len(title_input.input_value().strip())} chars, description={len(description_box.input_value().strip())} chars")
         page.wait_for_function("""(baseline) => {
             const title = document.querySelector("input[placeholder*='Enter the exact name of the item being traded']");
             const desc = document.querySelector("textarea[placeholder*='Enter any comments about the item being traded']");
@@ -262,6 +263,7 @@ def process_trading_workflow(context, image_path, task_id):
         if ocr_title == before_title and ocr_description == before_description:
             raise RuntimeError("未偵測到網站 OCR 結果變化；不呼叫 Gemini。")
         print(f"[{task_id}] diablo2.io OCR 已更新。標題：{ocr_title!r}；描述長度：{len(ocr_description)}")
+        print(f"[{task_id}] OCR 原文（前 500 字）：{ocr_text[:500]}")
         print(f"[{task_id}] 4. 將網站 OCR 文字交給 Gemini 估價...")
 
         estimate = ask_gemini_to_price_only(ocr_text)
@@ -275,12 +277,11 @@ def process_trading_workflow(context, image_path, task_id):
                 raise RuntimeError("價格描述欄位回讀驗證失敗；停止。")
             print(f"[{task_id}] Gemini 估價已追加至描述：{estimate}")
 
-        # Verify the OCR title was not overwritten and the selected image is still attached.
+        # The site can clear the file input after receiving the image for OCR.
+        # OCR field changes are the reliable signal here; do not require the
+        # transient input.files list to remain populated.
         if title_input.input_value().strip() != ocr_title:
             raise RuntimeError("交易標題在估價階段發生非預期變化；停止。")
-        attached_after = upload_input.evaluate("el => !!(el.files && el.files.length && el.files[0].size > 0)")
-        if not attached_after:
-            raise RuntimeError("圖片附件在填寫表單後遺失；請勿提交。")
         print(f"[{task_id}] 【完成】網站 OCR、Gemini 估價及欄位驗證完成。")
         print("請人工確認遊戲模式、平台、物品類別、圖片附件與價格，再自行點擊 Create Trade Listing。")
     except Exception as e:
