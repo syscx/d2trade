@@ -222,34 +222,50 @@ def ask_gemini_recommended_price(ocr_text):
 
 
 def classify_crafted_item_title(ocr_text, task_id):
-    """Classify recipe family and item type for a concise diablo2.io title."""
-    prompt = (
-        "Classify this Diablo II: Resurrected item. Return JSON only with keys: "
-        "is_crafted (boolean), craft_type (Blood, Safety, Hit Power, Caster, or None), "
-        "item_type (Boots, Ring, Amulet, or Other), confidence (0 to 1). "
-        "Only mark is_crafted true when OCR stats support a crafted item; do not infer from a random rare item. "
-        "If recipe family or item type is uncertain, use None or Other and lower confidence.\\n\\nOCR text:\\n" + ocr_text
+    """Deterministic crafted-item classification from diablo2.io OCR text."""
+    text = " ".join((ocr_text or "").casefold().split())
+    # Identify base item type from the item's actual base-name wording.
+    boot_terms = (
+        "boots", "greaves", "light plated boots", "chain boots",
+        "heavy boots", "war boots", "battle boots", "greaves",
+        "demonhide boots", "wyrmhide boots", "scarabshell boots",
+        "boneweave boots", "mesh boots", "myrmidon greaves",
+        " mirrored boots", "ward boots", " sharkskin boots",
     )
-    try:
-        res = client.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=prompt,
-            config={"response_mime_type": "application/json"}
-        )
-        data = json.loads((res.text or "").strip())
-        craft = str(data.get("craft_type", "None")).strip().casefold()
-        item_type = str(data.get("item_type", "Other")).strip().casefold()
-        is_crafted = data.get("is_crafted") is True
-        confidence = float(data.get("confidence", 0))
-        craft_map = {"blood": "Blood", "safety": "Safety", "hit power": "Hit Power", "hitpower": "Hit Power", "caster": "Caster"}
-        type_map = {"boots": "Boots", "ring": "Ring", "amulet": "Amulet"}
-        if not is_crafted or confidence < 0.75 or craft not in craft_map or item_type not in type_map:
-            print(f"[{task_id}] Craft 分類不夠確定（{craft}/{item_type}, confidence={confidence:.2f}），保留網站原標題。")
-            return None
-        return f"{craft_map[craft]} {type_map[item_type]}"
-    except Exception as e:
-        print(f"[{task_id}] Craft 分類失敗，保留網站原標題：{e}")
+    is_boots = any(term.strip() in text for term in boot_terms)
+    is_ring = "ring" in text
+    is_amulet = "amulet" in text
+    item_types = [name for name, matched in (("Boots", is_boots), ("Ring", is_ring), ("Amulet", is_amulet)) if matched]
+    if len(item_types) != 1:
+        print(f"[{task_id}] OCR 無法唯一判斷物品種類；保留原標題。")
         return None
+
+    # Require the characteristic stat pair for each recipe family.
+    has_mana_regen = "regenerate mana" in text or "mana regeneration" in text
+    has_plus_mana = any(token in text for token in ("+ to mana", "+ mana", "increase maximum mana"))
+    has_life = "+ to life" in text or "+ life" in text or "life" in text
+    has_life_leech = "life stolen per hit" in text or "life leech" in text or "life steal" in text
+    has_damage_reduce = "damage reduced by" in text or "damage reduction" in text
+    has_magic_reduce = "magic damage reduced by" in text or "magic damage reduction" in text
+    has_struck = "when struck" in text or "struck" in text
+    has_frost_nova = "frost nova" in text
+
+    candidates = []
+    if has_mana_regen and has_plus_mana:
+        candidates.append("Caster")
+    if has_life and has_life_leech:
+        candidates.append("Blood")
+    if has_damage_reduce and has_magic_reduce:
+        candidates.append("Safety")
+    if has_struck and has_frost_nova:
+        candidates.append("Hit Power")
+
+    if len(candidates) != 1:
+        print(f"[{task_id}] Craft 特徵不唯一或不足（{candidates}）；保留網站 OCR 原標題。")
+        return None
+    title = f"{candidates[0]} {item_types[0]}"
+    print(f"[{task_id}] 依 OCR 屬性規則分類為：{title}")
+    return title
 
 
 def process_trading_workflow(context, image_path, task_id):
@@ -337,11 +353,20 @@ def process_trading_workflow(context, image_path, task_id):
             price_line = ask_gemini_recommended_price(ocr_text)
         else:
             price_line = f"BIN: {estimate}"
-        final_description = f"{ocr_description}\\n\\n{price_line}" if ocr_description else f"{ocr_text}\\n\\n{price_line}"
-        description_box.fill(final_description)
+        # Preserve the OCR textarea without firing its input/change handlers:
+        # the site listens to edits there and may restart its own OCR/parser,
+        # replacing valid OCR text with a transient "Parsing..." status.
+        base_description = ocr_description if ocr_description else ocr_text
+        final_description = f"{base_description}\n\n{price_line}"
+        description_box.evaluate("""(el, value) => {
+            const setter = Object.getOwnPropertyDescriptor(
+                window.HTMLTextAreaElement.prototype, 'value'
+            ).set;
+            setter.call(el, value);
+        }""", final_description)
         if description_box.input_value().strip() != final_description.strip():
-            raise RuntimeError("價格描述欄位回讀驗證失敗；停止。")
-        print(f"[{task_id}] Gemini 價格文字已填入：{price_line}")
+            raise RuntimeError("價格文字寫入後回讀驗證失敗；停止。")
+        print(f"[{task_id}] 已保留 OCR 原文並加入價格（未觸發網站重新解析）：{price_line}")
 
         # The site can clear the file input after receiving the image for OCR.
         # OCR field changes are the reliable signal here; do not require the
