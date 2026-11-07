@@ -263,16 +263,26 @@ def on_f9_pressed():
     task_id = uuid.uuid4().hex[:6].upper()
     raw_img = f"raw_{task_id}.png"
     cropped_img = f"crop_{task_id}.jpg"
-    
     try:
         capture_d2r_screen(raw_img)
         detect_and_crop_tooltip(raw_img, cropped_img)
-        if os.path.exists(raw_img): os.remove(raw_img)
-        
-        TASK_QUEUE.put((cropped_img, task_id))
-        print(f"[{task_id}] 裝備掃描成功！已排入網頁自動化排程...")
+        if os.path.exists(raw_img):
+            os.remove(raw_img)
+        try:
+            TASK_QUEUE.put_nowait((cropped_img, task_id))
+            print(f"[{task_id}] 裝備掃描成功！已排入網頁自動化排程。")
+        except queue.Full:
+            if os.path.exists(cropped_img):
+                os.remove(cropped_img)
+            print(f"[{task_id}] 目前已有任務處理中；本次按鍵已拒絕，避免重複操作。")
     except Exception as e:
-        print(f"[{task_id}] 裝備掃描發生錯誤: {e}")
+        print(f"[{task_id}] 裝備掃描停止：{type(e).__name__}: {e}")
+        for path in (raw_img, cropped_img):
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
 def main():
     print("==========================================================")
@@ -295,13 +305,17 @@ def main():
         
         keyboard.add_hotkey('f9', on_f9_pressed)
         
-        while True:
-            try:
-                cropped_img, task_id = TASK_QUEUE.get_nowait()
-                process_trading_workflow(context, cropped_img, task_id)
-                TASK_QUEUE.task_done()
+        try:
+            while True:
+                try:
+                cropped_img, task_id = TASK_QUEUE.get(timeout=0.25)
             except queue.Empty:
-                pass
+                cropped_img = task_id = None
+            if cropped_img:
+                try:
+                    process_trading_workflow(context, cropped_img, task_id)
+                finally:
+                    TASK_QUEUE.task_done()
             
             try:
                 _ = context.pages
@@ -309,7 +323,14 @@ def main():
                 print("[系統] 瀏覽器核心已被關閉，系統安全退出。")
                 break
                 
-            time.sleep(0.1)
+        except KeyboardInterrupt:
+            print("\n[系統] 收到中斷訊號，準備安全退出。")
+        finally:
+            keyboard.unhook_all()
+            try:
+                context.close()
+            except Exception:
+                pass
 
 if __name__ == "__main__":
     main()
