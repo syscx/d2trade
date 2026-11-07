@@ -243,7 +243,7 @@ def classify_crafted_item_title(ocr_text, task_id):
     # Require the characteristic stat pair for each recipe family.
     has_mana_regen = "regenerate mana" in text or "mana regeneration" in text
     has_plus_mana = any(token in text for token in ("+ to mana", "+ mana", "increase maximum mana"))
-    has_life = "+ to life" in text or "+ life" in text or "life" in text
+    has_life = "+ to life" in text or "+ life" in text
     has_life_leech = "life stolen per hit" in text or "life leech" in text or "life steal" in text
     has_damage_reduce = "damage reduced by" in text or "damage reduction" in text
     has_magic_reduce = "magic damage reduced by" in text or "magic damage reduction" in text
