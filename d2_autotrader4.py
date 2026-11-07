@@ -111,9 +111,11 @@ PRICE_DB = PriceHistoryDB()
 
 
 def detect_and_crop_tooltip(f_path, o_path):
+    """Crop a likely tooltip; fail closed when no plausible region is found."""
     print("正在透過電腦視覺掃描 D2R 提示框...")
     img = cv2.imread(f_path)
-    if img is None: return f_path
+    if img is None:
+        raise RuntimeError("截圖檔案無法讀取。")
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     _, thresh = cv2.threshold(gray, 15, 255, cv2.THRESH_BINARY_INV)
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -121,24 +123,41 @@ def detect_and_crop_tooltip(f_path, o_path):
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
         if 150 < w < (gray.shape[1] * 0.5) and 150 < h < (gray.shape[0] * 0.8):
-            if w * h > max_area: max_area = w * h; best_box = (x, y, w, h)
-    if best_box:
-        x, y, w, h = best_box; p = 5
-        cv2.imwrite(o_path, img[max(0,y-p):min(gray.shape[0],y+h+p), max(0,x-p):min(gray.shape[1],x+w+p)], [int(cv2.IMWRITE_JPEG_QUALITY), 95])
-        return o_path
-    return f_path
+            if w * h > max_area:
+                max_area, best_box = w * h, (x, y, w, h)
+    if not best_box:
+        raise RuntimeError("找不到可信的裝備提示框；已停止，避免把整個桌面送去 OCR。")
+    x, y, w, h = best_box
+    p = 5
+    crop = img[max(0, y-p):min(gray.shape[0], y+h+p), max(0, x-p):min(gray.shape[1], x+w+p)]
+    if crop.size == 0 or crop.shape[0] < 100 or crop.shape[1] < 100:
+        raise RuntimeError("偵測到的提示框尺寸異常；已停止處理。")
+    if not cv2.imwrite(o_path, crop, [int(cv2.IMWRITE_JPEG_QUALITY), 95]):
+        raise RuntimeError("無法寫入提示框裁切圖片。")
+    return o_path
+
 
 def capture_d2r_screen(r_path):
+    """Capture only the game window. Never silently fall back to the desktop."""
     print("\n[F9 觸發] 正在擷取遊戲視窗...")
     d2r_windows = gw.getWindowsWithTitle("Diablo II: Resurrected")
-    if d2r_windows and len(d2r_windows) > 0:
-        d2r_win = d2r_windows[0]
-        try: d2r_win.activate(); time.sleep(0.1)
-        except: pass
-        ImageGrab.grab(bbox=(d2r_win.left, d2r_win.top, d2r_win.right, d2r_win.bottom)).save(r_path)
-        return r_path
-    ImageGrab.grab().save(r_path); return r_path
-
+    if not d2r_windows:
+        raise RuntimeError("找不到 Diablo II: Resurrected 視窗；請確認遊戲已開啟。")
+    d2r_win = d2r_windows[0]
+    if getattr(d2r_win, "isMinimized", False):
+        raise RuntimeError("遊戲視窗目前已最小化。")
+    try:
+        d2r_win.activate()
+        time.sleep(0.35)
+    except Exception as e:
+        raise RuntimeError(f"無法將遊戲視窗切到前景：{e}") from e
+    left, top, right, bottom = d2r_win.left, d2r_win.top, d2r_win.right, d2r_win.bottom
+    if right <= left or bottom <= top:
+        raise RuntimeError("遊戲視窗尺寸無效。")
+    ImageGrab.grab(bbox=(left, top, right, bottom)).save(r_path)
+    if not os.path.exists(r_path) or os.path.getsize(r_path) < 1024:
+        raise RuntimeError("遊戲截圖為空或檔案尺寸異常。")
+    return r_path
 def ask_gemini_to_price_only(ocr_text):
     print("正在將文字發送至 Gemini 進行最高天價估計...")
 
