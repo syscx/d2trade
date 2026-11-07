@@ -7,6 +7,7 @@ from PIL import Image, ImageGrab
 import pygetwindow as gw
 from google import genai
 from playwright.sync_api import sync_playwright
+import re
 
 try:
     client = genai.Client()
