@@ -21,7 +21,9 @@ PURE_SANDBOX_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "d2_shared_s
 PRICE_DB_PATH = os.path.join(os.path.expanduser("~"), "Desktop", "d2_price_history.db")
 
 # 建立一個執行緒安全的任務佇列
-TASK_QUEUE = queue.Queue(maxsize=1)
+TASK_QUEUE = queue.Queue()
+# Serialize hotkey callbacks so rapid F9 presses cannot overlap screen capture.
+CAPTURE_LOCK = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -737,29 +739,35 @@ def process_trading_workflow(context, image_path, task_id):
                 print(f"[{task_id}] 無法清理暫存圖片 {image_path}: {e}")
 
 def on_f9_pressed():
+    """Capture one item per F9 press and enqueue it for sequential processing."""
     task_id = uuid.uuid4().hex[:6].upper()
     raw_img = f"raw_{task_id}.png"
     cropped_img = f"crop_{task_id}.jpg"
-    try:
-        capture_d2r_screen(raw_img)
-        detect_and_crop_tooltip(raw_img, cropped_img)
-        if os.path.exists(raw_img):
-            os.remove(raw_img)
+
+    # keyboard hotkey callbacks may overlap; serialize capture so each queued
+    # task gets its own complete screenshot before the next F9 capture begins.
+    with CAPTURE_LOCK:
         try:
-            TASK_QUEUE.put_nowait((cropped_img, task_id))
-            print(f"[{task_id}] 裝備掃描成功！已排入網頁自動化排程。")
-        except queue.Full:
-            if os.path.exists(cropped_img):
-                os.remove(cropped_img)
-            print(f"[{task_id}] 目前已有任務處理中；本次按鍵已拒絕，避免重複操作。")
-    except Exception as e:
-        print(f"[{task_id}] 裝備掃描停止：{type(e).__name__}: {e}")
-        for path in (raw_img, cropped_img):
-            if os.path.exists(path):
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass
+            capture_d2r_screen(raw_img)
+            detect_and_crop_tooltip(raw_img, cropped_img)
+            if os.path.exists(raw_img):
+                os.remove(raw_img)
+
+            # Unbounded FIFO queue: every successfully captured F9 request waits
+            # until the single browser worker is ready to process it.
+            TASK_QUEUE.put((cropped_img, task_id))
+            print(
+                f"[{task_id}] 裝備掃描成功！已加入排程；"
+                f"目前等待中的任務：{TASK_QUEUE.qsize()}"
+            )
+        except Exception as e:
+            print(f"[{task_id}] 裝備掃描停止：{type(e).__name__}: {e}")
+            for path in (raw_img, cropped_img):
+                if os.path.exists(path):
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
 
 def main():
     print("==========================================================")
