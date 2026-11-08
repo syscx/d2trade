@@ -118,13 +118,13 @@ def import_records(path: Path, db_path: Path = DEFAULT_DB) -> tuple[int, int]:
                 features = extract_features(item_text)
                 stable = "|".join((category, normalize_text(item_text), str(price), status, source, observed))
                 fingerprint = __import__("hashlib").sha256(stable.encode()).hexdigest()
-                conn.execute("""INSERT OR IGNORE INTO observations
+                cursor = conn.execute("""INSERT OR IGNORE INTO observations
                     (fingerprint,category,item_text,features_json,price_ist,status,source,platform,realm,ladder,season,observed_at,source_url)
                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (fingerprint, category, item_text, json.dumps(features, sort_keys=True), price, status,
                      source, row.get("platform","unknown"), row.get("realm","unknown"),
                      row.get("ladder","unknown"), row.get("season","unknown"), observed, row.get("source_url","")))
-                inserted += conn.total_changes > 0
+                inserted += max(cursor.rowcount, 0)
             except (KeyError, TypeError, ValueError):
                 rejected += 1
         conn.commit()
