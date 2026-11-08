@@ -425,7 +425,7 @@ def classify_crafted_item_title(ocr_text, task_id):
             has_amulet_stat(r"\b\d+(?:-\d+)?\s*%?\s*life\s+stolen\s+per\s+hit\b")
             or has_amulet_stat(r"\b\d+(?:-\d+)?\s*%?\s*(?:life\s+leech|life\s+steal)\b")
         )
-        has_amulet_life = has_amulet_stat(r"\+\s*\d+\s+(?:to\s+)?life\b")
+        has_amulet_life = has_amulet_stat(r"\+\s*\d+(?:-\d+)?\s+(?:to\s+)?life\b")
         has_faster_run_walk = has_amulet_stat(
             r"\b\d+(?:-\d+)?\s*%?\s*faster\s+run\s*(?:/\s*|and\s+)?walk\b"
         ) or has_amulet_stat(r"\b\d+(?:-\d+)?\s*%?\s*faster\s+run(?:ning)?\b")
@@ -437,7 +437,7 @@ def classify_crafted_item_title(ocr_text, task_id):
             has_amulet_stat(r"\bregenerate\s+mana\s+\d+(?:-\d+)?\s*%?")
             or has_amulet_stat(r"\bmana\s+regeneration\s+\d+(?:-\d+)?\s*%?")
         )
-        has_amulet_mana = has_amulet_stat(r"\+\s*\d+\s+(?:to\s+)?mana\b")
+        has_amulet_mana = has_amulet_stat(r"\+\s*\d+(?:-\d+)?\s+(?:to\s+)?mana\b")
 
         has_amulet_frost_nova = has_amulet_stat(
             r"\b5\s*%?\s*chance\s+to\s+cast\s+(?:level\s+)?4\s+frost\s+nova\s+when\s+struck\b"
