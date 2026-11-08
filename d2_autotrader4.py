@@ -370,19 +370,19 @@ def classify_crafted_item_title(ocr_text, task_id):
     if is_ring:
         ring_checks = {
             "Blood": (
-                has_stat(r"\\b\\d+\\s*%?\\s*life\\s+stolen\\s+per\\s+hit\\b")
-                or has_stat(r"\\b\\d+\\s*%?\\s*(?:life\\s+leech|life\\s+steal)\\b")
-            ) and has_stat(r"\\+\\s*\\d+\\s+(?:to\\s+)?life\\b"),
+                has_stat(r"\b\d+(?:-\d+)?\s*%?\s*life\s+stolen\s+per\s+hit\b")
+                or has_stat(r"\b\d+(?:-\d+)?\s*%?\s*(?:life\s+leech|life\s+steal)\b")
+            ) and has_stat(r"\+\s*\d+\s+(?:to\s+)?life\b"),
             "Caster": (
-                has_stat(r"\\bregenerate\\s+mana\\b")
-                or has_stat(r"\\bmana\\s+regeneration\\b")
-            ) and has_stat(r"\\+\\s*\\d+\\s+(?:to\\s+)?mana\\b"),
+                has_stat(r"\bregenerate\s+mana\b")
+                or has_stat(r"\bmana\s+regeneration\b")
+            ) and has_stat(r"\+\s*\d+\s+(?:to\s+)?mana\b"),
             "Hit Power": (
-                has_stat(r"\\d+\\s*%?\\s*chance\\s+to\\s+cast.*?frost\\s+nova.*?when\\s+struck")
-                or has_stat(r"frost\\s+nova.*?when\\s+struck")
-            ) and has_stat(r"attacker\\s+takes\\s+damage"),
-            "Safety": has_stat(r"damage\\s+reduced\\s+by\\s+\\d+(?:-\\d+)?") and has_stat(
-                r"magic\\s+damage\\s+reduced\\s+by\\s+\\d+(?:-\\d+)?"
+                has_stat(r"\d+\s*%?\s*chance\s+to\s+cast.*?frost\s+nova.*?when\s+struck")
+                or has_stat(r"frost\s+nova.*?when\s+struck")
+            ) and has_stat(r"attacker\s+takes\s+damage"),
+            "Safety": has_stat(r"damage\s+reduced\s+by\s+\d+(?:-\d+)?") and has_stat(
+                r"magic\s+damage\s+reduced\s+by\s+\d+(?:-\d+)?"
             ),
         }
         matched_rings = [family for family, matched in ring_checks.items() if matched]
