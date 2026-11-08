@@ -271,6 +271,92 @@ def classify_crafted_item_title(ocr_text, task_id):
         print(f"[{task_id}] OCR 無法唯一判斷物品種類；保留原標題。")
         return None
 
+    # Gloves use their own recipe families and fixed-mod signatures.
+    # The base item narrows the possible recipe; the recipe-specific mods confirm it.
+    if is_gloves:
+        glove_recipe_bases = {
+            "Caster": (
+                "leather gloves", "demonhide gloves", "bramble mitts",
+            ),
+            "Blood": (
+                "heavy gloves", "sharkskin gloves", "vampirebone gloves",
+            ),
+            "Hit Power": (
+                "chain gloves", "heavy bracers", "vambraces",
+            ),
+            "Safety": (
+                "gauntlets", "war gauntlets", "ogre gauntlets",
+            ),
+        }
+        matching_families = [
+            family
+            for family, bases in glove_recipe_bases.items()
+            if any(
+                re.search(rf"(?<!\\w){re.escape(base)}(?!\\w)", text)
+                for base in bases
+            )
+        ]
+
+        # Caster Gloves: mana regeneration + mana after each kill.
+        # +10-20 Mana is another fixed mod, but OCR can truncate that line;
+        # do not make it mandatory when the two distinctive mods are present.
+        has_mana_per_kill = bool(re.search(
+            r"(?:\\+\\s*)?\\d+\\s+(?:to\\s+)?mana\\s+after\\s+each\\s+kill",
+            text
+        ))
+        has_mana_regen = (
+            "regenerate mana" in text or "mana regeneration" in text
+        )
+
+        # Blood Gloves: life leech + crushing blow.
+        has_life_leech = (
+            "life stolen per hit" in text
+            or "life leech" in text
+            or "life steal" in text
+        )
+        has_crushing_blow = (
+            "crushing blow" in text
+            or bool(re.search(r"\\bchance of crushing blow\\b", text))
+        )
+
+        # Hit Power Gloves: knockback + Frost Nova when struck.
+        has_knockback = "knockback" in text
+        has_frost_nova_on_struck = (
+            "frost nova" in text and ("when struck" in text or "when hit" in text)
+        )
+
+        # Safety Gloves: physical and magic damage reduction.
+        has_damage_reduce = (
+            "damage reduced by" in text or "damage reduction" in text
+        )
+        has_magic_reduce = (
+            "magic damage reduced by" in text
+            or "magic damage reduction" in text
+        )
+
+        glove_checks = {
+            "Caster": has_mana_regen and has_mana_per_kill,
+            "Blood": has_life_leech and has_crushing_blow,
+            "Hit Power": has_knockback and has_frost_nova_on_struck,
+            "Safety": has_damage_reduce and has_magic_reduce,
+        }
+        matched_crafts = [
+            family for family in matching_families if glove_checks[family]
+        ]
+        if len(matched_crafts) == 1:
+            title = f"{matched_crafts[0]} Gloves"
+            print(f"[{task_id}] 依手套專屬底材與固定屬性分類為：{title}")
+            return title
+
+        print(
+            f"[{task_id}] 手套 Craft 無法唯一判斷；"
+            f"底材家族={matching_families}，"
+            f"符合屬性={[family for family, matched in glove_checks.items() if matched]}；"
+            "保留網站 OCR 原標題。"
+        )
+        return None
+
+    # Non-glove equipment keeps its existing recipe-family rules.
     # Require the characteristic stat pair for each recipe family.
     has_mana_regen = "regenerate mana" in text or "mana regeneration" in text
     has_plus_mana = any(token in text for token in ("+ to mana", "+ mana", "increase maximum mana"))
