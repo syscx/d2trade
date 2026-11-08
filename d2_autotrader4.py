@@ -8,6 +8,8 @@ import pygetwindow as gw
 from google import genai
 from playwright.sync_api import sync_playwright
 import re
+from pathlib import Path
+from local_market_evaluator import evaluate as evaluate_local_market
 
 try:
     client = genai.Client()
@@ -698,7 +700,21 @@ def process_trading_workflow(context, image_path, task_id):
         print(f"[{task_id}] 5. 將網站 OCR 文字交給 Gemini 估價...")
         estimate = ask_gemini_to_price_only(ocr_text)
         if not estimate or estimate.strip().casefold() == "unknown":
-            price_line = ask_gemini_recommended_price(ocr_text)
+            # Conservative local fallback: only quote a price when enough
+            # comparable completed sales exist. Never invent a fallback price.
+            market_db = Path.home() / "Desktop" / "d2_market_intelligence.db"
+            local_result = evaluate_local_market(ocr_text, market_db)
+            if local_result.get("status") == "ok":
+                price_line = (
+                    f"Local market estimate: {local_result['estimate_ist']} Ist "
+                    f"(range {local_result['range_ist'][0]}-{local_result['range_ist'][1]} Ist; "
+                    f"{local_result['confidence']} confidence; "
+                    f"{local_result['sold_comps']} sold comps)"
+                )
+                print(f"[{task_id}] 本地成交資料估價：{price_line}")
+            else:
+                price_line = "PRICE: MANUAL REVIEW (insufficient verified market data)"
+                print(f"[{task_id}] 本地估價資料不足：{local_result.get('reason', 'manual review')}")
         else:
             price_line = f"BIN: {estimate}"
         # Do not attempt form writes after an unexpected navigation.
