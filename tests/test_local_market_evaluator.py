@@ -1,25 +1,65 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from local_market_evaluator import evaluate, import_records, infer_category
 
 class LocalEvaluatorTests(unittest.TestCase):
-    def test_requires_three_verified_sales(self):
+    def test_four_affix_jewel_uses_variable_roll_comps(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "market.db"
-            csv_path = Path(tmp) / "sales.csv"
-            csv_path.write_text(
-                "category,item_text,price_ist,status,source\n"
-                "crafted_amulet,Blood Amulet +10% Faster Run/Walk +15 to Life +5% Life Stolen per Hit +20 to Strength,2,sold,source-a\n"
-                "crafted_amulet,Blood Amulet +10% Faster Run/Walk +15 to Life +5% Life Stolen per Hit +20 to Strength,3,sold,source-b\n",
-                encoding="utf-8"
-            )
-            import_records(csv_path, db)
+            sales = Path(tmp) / "sales.json"
+            records = [
+                {
+                    "category": "rare_jewel_low_level",
+                    "item_text": "Rare Jewel Required Level: 18",
+                    "affixes_json": {
+                        "enhanced_damage_pct": 28,
+                        "max_damage": 5,
+                        "strength": 6,
+                        "life": 8
+                    },
+                    "price_ist": 2.0, "status": "sold", "source": "source-a"
+                },
+                {
+                    "category": "rare_jewel_low_level",
+                    "item_text": "Rare Jewel Required Level: 18",
+                    "affixes_json": {
+                        "enhanced_damage_pct": 34,
+                        "max_damage": 6,
+                        "strength": 8,
+                        "life": 10
+                    },
+                    "price_ist": 5.0, "status": "sold", "source": "source-b"
+                },
+                {
+                    "category": "rare_jewel_low_level",
+                    "item_text": "Rare Jewel Required Level: 18",
+                    "affixes_json": {
+                        "enhanced_damage_pct": 38,
+                        "max_damage": 7,
+                        "strength": 9,
+                        "life": 12
+                    },
+                    "price_ist": 8.0, "status": "sold", "source": "source-c"
+                }
+            ]
+            sales.write_text(json.dumps(records), encoding="utf-8")
+            added, rejected = import_records(sales, db)
+            self.assertEqual((added, rejected), (3, 0))
             result = evaluate(
-                "Blood Amulet +10% Faster Run/Walk +15 to Life +5% Life Stolen per Hit +20 to Strength",
-                db
+                "Rare Jewel Required Level: 18", db,
+                category="rare_jewel_low_level",
+                affixes={
+                    "enhanced_damage_pct": 35,
+                    "max_damage": 6,
+                    "strength": 8,
+                    "life": 11
+                }
             )
-            self.assertEqual(result["status"], "insufficient_data")
+            self.assertEqual(result["status"], "ok")
+            self.assertEqual(result["matched_affixes"], 4)
+            self.assertEqual(result["training_sales"], 3)
 
     def test_low_level_jewel_requires_level(self):
         self.assertEqual(infer_category("Rare Jewel Required Level: 18 +15% Enhanced Damage"), "rare_jewel_low_level")
