@@ -362,11 +362,44 @@ def classify_crafted_item_title(ocr_text, task_id):
         )
         return None
 
-    # Non-glove equipment keeps its existing recipe-family rules.
-    # Require the characteristic stat pair for each recipe family.
+    # Ring recipes have distinct fixed-mod pairs. Match the numeric OCR
+    # variants (for example "+ 15 to Life"), not only the stat-name fragments.
+    def has_stat(pattern):
+        return bool(re.search(pattern, text, re.IGNORECASE))
+
+    if is_ring:
+        ring_checks = {
+            "Blood": (
+                has_stat(r"\\b\\d+\\s*%?\\s*life\\s+stolen\\s+per\\s+hit\\b")
+                or has_stat(r"\\b\\d+\\s*%?\\s*(?:life\\s+leech|life\\s+steal)\\b")
+            ) and has_stat(r"\\+\\s*\\d+\\s+(?:to\\s+)?life\\b"),
+            "Caster": (
+                has_stat(r"\\bregenerate\\s+mana\\b")
+                or has_stat(r"\\bmana\\s+regeneration\\b")
+            ) and has_stat(r"\\+\\s*\\d+\\s+(?:to\\s+)?mana\\b"),
+            "Hit Power": (
+                has_stat(r"\\d+\\s*%?\\s*chance\\s+to\\s+cast.*?frost\\s+nova.*?when\\s+struck")
+                or has_stat(r"frost\\s+nova.*?when\\s+struck")
+            ) and has_stat(r"attacker\\s+takes\\s+damage"),
+            "Safety": has_stat(r"damage\\s+reduced\\s+by\\s+\\d+") and has_stat(
+                r"magic\\s+damage\\s+reduced\\s+by\\s+\\d+"
+            ),
+        }
+        matched_rings = [family for family, matched in ring_checks.items() if matched]
+        if len(matched_rings) != 1:
+            print(f"[{task_id}] Ring Craft 特徵不唯一或不足（{matched_rings}）；保留網站 OCR 原標題。")
+            return None
+        title = f"{matched_rings[0]} Ring"
+        print(f"[{task_id}] 依 Ring 固定屬性分類為：{title}")
+        return title
+
+    # Non-ring, non-glove equipment keeps its existing recipe-family rules.
+    # Numeric values are allowed between '+' and the stat name in OCR output.
     has_mana_regen = "regenerate mana" in text or "mana regeneration" in text
-    has_plus_mana = any(token in text for token in ("+ to mana", "+ mana", "increase maximum mana"))
-    has_life = "+ to life" in text or "+ life" in text
+    has_plus_mana = bool(re.search(
+        r"\\+\\s*\\d+\\s+(?:to\\s+)?mana\\b|increase maximum mana", text
+    ))
+    has_life = bool(re.search(r"\\+\\s*\\d+\\s+(?:to\\s+)?life\\b", text))
     has_life_leech = "life stolen per hit" in text or "life leech" in text or "life steal" in text
     has_damage_reduce = "damage reduced by" in text or "damage reduction" in text
     has_magic_reduce = "magic damage reduced by" in text or "magic damage reduction" in text
