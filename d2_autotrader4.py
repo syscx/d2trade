@@ -411,6 +411,81 @@ def classify_crafted_item_title(ocr_text, task_id):
         print(f"[{task_id}] 依 Ring 固定屬性分類為：{title}")
         return title
 
+    # Amulets have their own recipe signatures. Do not reuse ring checks:
+    # Blood Amulet adds Faster Run/Walk; Caster Amulet adds Faster Cast Rate;
+    # Hit Power Amulet adds Monster Flee; Safety Amulet adds Chance of Blocking.
+    if is_amulet:
+        # Correct isolated OCR I/l substitutions in numeric rolls only.
+        amulet_text = re.sub(r"\\b[il]\\b", "1", text)
+
+        def has_amulet_stat(pattern):
+            return bool(re.search(pattern, amulet_text, re.IGNORECASE))
+
+        has_amulet_life_leech = (
+            has_amulet_stat(r"\\b\\d+(?:-\\d+)?\\s*%?\\s*life\\s+stolen\\s+per\\s+hit\\b")
+            or has_amulet_stat(r"\\b\\d+(?:-\\d+)?\\s*%?\\s*(?:life\\s+leech|life\\s+steal)\\b")
+        )
+        has_amulet_life = has_amulet_stat(r"\\+\\s*\\d+\\s+(?:to\\s+)?life\\b")
+        has_faster_run_walk = has_amulet_stat(
+            r"\\b\\d+(?:-\\d+)?\\s*%?\\s*faster\\s+run\\s*(?:/\\s*|and\\s+)?walk\\b"
+        ) or has_amulet_stat(r"\\b\\d+(?:-\\d+)?\\s*%?\\s*faster\\s+run(?:ning)?\\b")
+
+        has_faster_cast_rate = has_amulet_stat(
+            r"\\b\\d+(?:-\\d+)?\\s*%?\\s*faster\\s+cast(?:ing)?\\s+rate\\b"
+        ) or has_amulet_stat(r"\\b\\d+(?:-\\d+)?\\s*%?\\s*fcr\\b")
+        has_amulet_mana_regen = (
+            has_amulet_stat(r"\\bregenerate\\s+mana\\s+\\d+(?:-\\d+)?\\s*%?")
+            or has_amulet_stat(r"\\bmana\\s+regeneration\\s+\\d+(?:-\\d+)?\\s*%?")
+        )
+        has_amulet_mana = has_amulet_stat(r"\\+\\s*\\d+\\s+(?:to\\s+)?mana\\b")
+
+        has_amulet_frost_nova = has_amulet_stat(
+            r"\\b5\\s*%?\\s*chance\\s+to\\s+cast\\s+(?:level\\s+)?4\\s+frost\\s+nova\\s+when\\s+struck\\b"
+        ) or has_amulet_stat(r"\\bfrost\\s+nova\\s+when\\s+struck\\b")
+        has_monster_flee = has_amulet_stat(
+            r"\\bhit\\s+causes\\s+monster\\s+to\\s+flee\\s+\\+?\\s*\\d+(?:-\\d+)?\\s*%?"
+        ) or has_amulet_stat(
+            r"\\bmonster\\s+flees\\s+\\+?\\s*\\d+(?:-\\d+)?\\s*%?"
+        )
+        has_amulet_attacker_damage = has_amulet_stat(
+            r"\\battacker\\s+takes\\s+damage\\s+(?:of\\s+)?\\d+(?:-\\d+)?\\b"
+        )
+
+        has_block_chance = has_amulet_stat(
+            r"\\+?\\s*\\d+(?:-\\d+)?\\s*%?\\s*increased\\s+chance\\s+of\\s+blocking\\b"
+        ) or has_amulet_stat(
+            r"\\b\\d+(?:-\\d+)?\\s*%?\\s*increased\\s+chance\\s+to\\s+block\\b"
+        )
+        has_amulet_damage_reduce = has_amulet_stat(
+            r"\\bdamage\\s+reduced\\s+by\\s+\\d+(?:-\\d+)?\\b"
+        )
+        has_amulet_magic_reduce = has_amulet_stat(
+            r"\\bmagic\\s+damage\\s+reduced\\s+by\\s+\\d+(?:-\\d+)?\\b"
+        )
+
+        amulet_checks = {
+            # Blood Amulet: all three fixed modifiers are distinct from Blood Ring.
+            "Blood": has_amulet_life_leech and has_amulet_life and has_faster_run_walk,
+            # Caster Amulet: FCR is mandatory; do not confuse it with Caster Ring.
+            "Caster": has_faster_cast_rate and has_amulet_mana_regen and has_amulet_mana,
+            # Hit Power Amulet: Monster Flee is unique to this amulet recipe.
+            "Hit Power": has_amulet_frost_nova and has_monster_flee and has_amulet_attacker_damage,
+            # Safety Amulet: blocking chance distinguishes it from Safety Ring.
+            "Safety": has_block_chance and has_amulet_damage_reduce and has_amulet_magic_reduce,
+        }
+        matched_amulets = [
+            family for family, matched in amulet_checks.items() if matched
+        ]
+        if len(matched_amulets) != 1:
+            print(
+                f"[{task_id}] Amulet Craft 特徵不唯一或不足（{matched_amulets}）；"
+                "保留網站 OCR 原標題。"
+            )
+            return None
+        title = f"{matched_amulets[0]} Amulet"
+        print(f"[{task_id}] 依 Amulet 專屬固定屬性分類為：{title}")
+        return title
+
     # Non-ring, non-glove equipment keeps its existing recipe-family rules.
     # Numeric values are allowed between '+' and the stat name in OCR output.
     has_mana_regen = "regenerate mana" in text or "mana regeneration" in text
