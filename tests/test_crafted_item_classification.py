@@ -67,10 +67,10 @@ class CraftedClassificationTests(unittest.TestCase):
 
     def test_caster_amulet_with_truncated_mana_bonus(self):
         self.check(
-            "Eagle Necklace\\nAmulet\\nRequired Level: 89\\n"
-            "+2 to Barbarian Skill Levels\\n+10% Faster Cast Rate\\n"
-            "4% Life Stolen Per Hit\\n+16\\nRegenerate Mana 10%\\n"
-            "All Resistances +5\\n+8% Damage Taken Goes to Mana",
+            "Eagle Necklace\nAmulet\nRequired Level: 89\n"
+            "+2 to Barbarian Skill Levels\n+10% Faster Cast Rate\n"
+            "4% Life Stolen Per Hit\n+16\nRegenerate Mana 10%\n"
+            "All Resistances +5\n+8% Damage Taken Goes to Mana",
             "Caster Amulet",
         )
 
