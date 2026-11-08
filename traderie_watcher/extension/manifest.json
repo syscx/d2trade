@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Traderie Passive Market Watcher",
+  "version": "0.1.0",
+  "description": "Locally records Traderie listing observations from pages already rendered in your browser. Does not click or alter the page.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://traderie.com/*",
+    "https://www.traderie.com/*",
+    "http://127.0.0.1:8765/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://traderie.com/*",
+        "https://www.traderie.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Traderie Watcher"
+  }
+}
