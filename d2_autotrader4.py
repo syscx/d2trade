@@ -236,12 +236,29 @@ def classify_crafted_item_title(ocr_text, task_id):
     is_boots = any(term.strip() in text for term in boot_terms)
     is_ring = "ring" in text
     is_amulet = "amulet" in text
-    # Crafted gloves can appear under several base names in D2R, not just "Gloves".
-    # Include the elite/exceptional gauntlet, bracer, mitt, and vambrace variants.
-    glove_terms = (
-        "gloves", "gauntlets", "bracers", "mitts", "vambraces",
+    # Match the complete D2R gloves base family (normal, exceptional, elite).
+    # Use full base names rather than generic words such as "gloves" or "gauntlets".
+    glove_base_names = (
+        "leather gloves",
+        "heavy gloves",
+        "chain gloves",
+        "light gauntlets",
+        "gauntlets",
+        "demonhide gloves",
+        "sharkskin gloves",
+        "heavy bracers",
+        "battle gauntlets",
+        "war gauntlets",
+        "bramble mitts",
+        "vampirebone gloves",
+        "vambraces",
+        "crusader gauntlets",
+        "ogre gauntlets",
     )
-    is_gloves = any(term in text for term in glove_terms)
+    is_gloves = any(
+        re.search(rf"(?<!\\w){re.escape(base_name)}(?!\\w)", text)
+        for base_name in glove_base_names
+    )
     item_types = [
         name for name, matched in (
             ("Boots", is_boots),
