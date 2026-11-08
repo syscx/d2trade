@@ -292,7 +292,7 @@ def classify_crafted_item_title(ocr_text, task_id):
             family
             for family, bases in glove_recipe_bases.items()
             if any(
-                re.search(rf"(?<!\\w){re.escape(base)}(?!\\w)", text)
+                re.search(rf"(?<!\w){re.escape(base)}(?!\w)", text)
                 for base in bases
             )
         ]
@@ -301,7 +301,7 @@ def classify_crafted_item_title(ocr_text, task_id):
         # +10-20 Mana is another fixed mod, but OCR can truncate that line;
         # do not make it mandatory when the two distinctive mods are present.
         has_mana_per_kill = bool(re.search(
-            r"(?:\\+\\s*)?\\d+\\s+(?:to\\s+)?mana\\s+after\\s+each\\s+kill",
+            r"\+\s*\d+\s+(?:to\s+)?mana\s+after\s+each\s+kill",
             text
         ))
         has_mana_regen = (
@@ -316,7 +316,7 @@ def classify_crafted_item_title(ocr_text, task_id):
         )
         has_crushing_blow = (
             "crushing blow" in text
-            or bool(re.search(r"\\bchance of crushing blow\\b", text))
+            or bool(re.search(r"\bchance of crushing blow\b", text))
         )
 
         # Hit Power Gloves: knockback + Frost Nova when struck.
