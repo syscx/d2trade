@@ -34,6 +34,23 @@ class CraftedClassificationTests(unittest.TestCase):
     def test_safety_ring_with_range(self):
         self.check("Ring\nDamage Reduced by 3\nMagic Damage Reduced by 1-2", "Safety Ring")
 
+    def test_safety_ring_with_ocr_confusing_one_for_letter_i(self):
+        self.check(
+            "Bone Turn\nRing\n+120 to Attack Rating\n+19 to Strength\n"
+            "+1 to Vitality\n+13\nPoison Resist +7%\n"
+            "Damage Reduced By I\nMagic Damage Reduced By I",
+            "Safety Ring",
+        )
+
+    def test_caster_ring_with_truncated_mana_line(self):
+        self.check(
+            "Eagle Band\nRing\n+120 to Attack Rating\n"
+            "8% Life Stolen Per Hit\n+7 to Strength\n+3 to Energy\n"
+            "+19\nRegenerate Mana 5%\n"
+            "5% Better Chance of Getting Magic Items",
+            "Caster Ring",
+        )
+
     def test_existing_blood_gloves_unchanged(self):
         self.check("Sharkskin Gloves\n3% Life Stolen Per Hit\n10% Chance of Crushing Blow", "Blood Gloves")
 
