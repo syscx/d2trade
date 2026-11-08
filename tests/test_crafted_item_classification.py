@@ -51,6 +51,40 @@ class CraftedClassificationTests(unittest.TestCase):
             "Caster Ring",
         )
 
+    def test_blood_amulet_uses_amulet_specific_modifiers(self):
+        self.check(
+            "Mara's Beads\nAmulet\n1-3% Life Stolen Per Hit\n"
+            "+10-20 to Life\n5-10% Faster Run/Walk",
+            "Blood Amulet",
+        )
+
+    def test_caster_amulet_requires_fcr_mana_regen_and_mana(self):
+        self.check(
+            "Amulet\n5-10% Faster Cast Rate\n"
+            " Regenerate Mana 4-10%\n+10-20 to Mana",
+            "Caster Amulet",
+        )
+
+    def test_hit_power_amulet_uses_monster_flee(self):
+        self.check(
+            "Amulet\n5% Chance to Cast Level 4 Frost Nova When Struck\n"
+            "Attacker Takes Damage of 3-10\nHit Causes Monster to Flee +1-2%",
+            "Hit Power Amulet",
+        )
+
+    def test_safety_amulet_uses_block_chance(self):
+        self.check(
+            "Amulet\n+5% Increased Chance of Blocking\n"
+            "Damage Reduced by 1-4\nMagic Damage Reduced by 1-2",
+            "Safety Amulet",
+        )
+
+    def test_ring_stats_alone_do_not_classify_as_blood_amulet(self):
+        self.check(
+            "Amulet\n1-3% Life Stolen Per Hit\n+10-20 to Life",
+            None,
+        )
+
     def test_existing_blood_gloves_unchanged(self):
         self.check("Sharkskin Gloves\n3% Life Stolen Per Hit\n10% Chance of Crushing Blow", "Blood Gloves")
 
