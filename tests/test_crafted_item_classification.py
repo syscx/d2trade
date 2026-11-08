@@ -26,7 +26,7 @@ class CraftedClassificationTests(unittest.TestCase):
         self.check("Blood Ring\n1-3% Life Stolen Per Hit\n+ 15 to Life", "Blood Ring")
 
     def test_caster_ring(self):
-        self.check("Ring\n10% Mana Regeneration\n+  mana?\n+ 20 to Mana", "Caster Ring")
+        self.check("Ring\n10% Mana Regeneration\n+ 20 to Mana", "Caster Ring")
 
     def test_hit_power_ring(self):
         self.check("Ring\n5% Chance to Cast Level 4 Frost Nova When Struck\nAttacker Takes Damage of 4", "Hit Power Ring")
