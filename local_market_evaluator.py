@@ -209,6 +209,9 @@ def evaluate(item_text: str, db_path: Path = DEFAULT_DB, *,
         weight = math.exp(-4.0 * distance) * (1.0 + 0.15 * shared)
         scored.append((distance, weight, shared, row))
     scored.sort(key=lambda x: x[0])
+    if not scored or max(shared for _, _, shared, _ in scored) == 0:
+        return {"status": "insufficient_data", "category": category,
+                "reason": "No shared affix identities with completed sales; refusing to extrapolate across unrelated affixes."}
     chosen = scored[:max(1, min(top_k, len(scored)))]
     weights = [max(w, 1e-8) for _, w, _, _ in chosen]
     prices = [float(row["price_ist"]) for _, _, _, row in chosen]
