@@ -256,7 +256,7 @@ def classify_crafted_item_title(ocr_text, task_id):
         "ogre gauntlets",
     )
     is_gloves = any(
-        re.search(rf"(?<!\\w){re.escape(base_name)}(?!\\w)", text)
+        re.search(rf"(?<!\w){re.escape(base_name)}(?!\w)", text)
         for base_name in glove_base_names
     )
     item_types = [
