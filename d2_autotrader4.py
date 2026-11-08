@@ -381,8 +381,8 @@ def classify_crafted_item_title(ocr_text, task_id):
                 has_stat(r"\\d+\\s*%?\\s*chance\\s+to\\s+cast.*?frost\\s+nova.*?when\\s+struck")
                 or has_stat(r"frost\\s+nova.*?when\\s+struck")
             ) and has_stat(r"attacker\\s+takes\\s+damage"),
-            "Safety": has_stat(r"damage\\s+reduced\\s+by\\s+\\d+") and has_stat(
-                r"magic\\s+damage\\s+reduced\\s+by\\s+\\d+"
+            "Safety": has_stat(r"damage\\s+reduced\\s+by\\s+\\d+(?:-\\d+)?") and has_stat(
+                r"magic\\s+damage\\s+reduced\\s+by\\s+\\d+(?:-\\d+)?"
             ),
         }
         matched_rings = [family for family, matched in ring_checks.items() if matched]
