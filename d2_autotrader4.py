@@ -368,20 +368,38 @@ def classify_crafted_item_title(ocr_text, task_id):
         return bool(re.search(pattern, text, re.IGNORECASE))
 
     if is_ring:
+        # Some OCR engines confuse a standalone "I"/"l" with the digit "1"
+        # in numeric stat rolls (for example, "Reduced By I"). Correct only
+        # isolated characters, not letters inside ordinary words.
+        ring_text = re.sub(r"\b[il]\b", "1", text)
+
+        def has_ring_stat(pattern):
+            return bool(re.search(pattern, ring_text, re.IGNORECASE))
+
+        # Caster Ring's fixed +10-20 Mana line is occasionally truncated by
+        # diablo2.io OCR to a bare "+19". Accept that orphan number only when
+        # it directly precedes the Mana Regeneration line and is in the
+        # recipe's known 10-20 range; do not infer mana from arbitrary numbers.
+        has_caster_mana = (
+            has_ring_stat(r"\+\s*\d+\s+(?:to\s+)?mana\b")
+            or has_ring_stat(
+                r"\+\s*(?:1[0-9]|20)\s+(?=(?:regenerate\s+mana|mana\s+regeneration)\b)"
+            )
+        )
         ring_checks = {
             "Blood": (
-                has_stat(r"\b\d+(?:-\d+)?\s*%?\s*life\s+stolen\s+per\s+hit\b")
-                or has_stat(r"\b\d+(?:-\d+)?\s*%?\s*(?:life\s+leech|life\s+steal)\b")
-            ) and has_stat(r"\+\s*\d+\s+(?:to\s+)?life\b"),
+                has_ring_stat(r"\b\d+(?:-\d+)?\s*%?\s*life\s+stolen\s+per\s+hit\b")
+                or has_ring_stat(r"\b\d+(?:-\d+)?\s*%?\s*(?:life\s+leech|life\s+steal)\b")
+            ) and has_ring_stat(r"\+\s*\d+\s+(?:to\s+)?life\b"),
             "Caster": (
-                has_stat(r"\bregenerate\s+mana\b")
-                or has_stat(r"\bmana\s+regeneration\b")
-            ) and has_stat(r"\+\s*\d+\s+(?:to\s+)?mana\b"),
+                has_ring_stat(r"\bregenerate\s+mana\b")
+                or has_ring_stat(r"\bmana\s+regeneration\b")
+            ) and has_caster_mana,
             "Hit Power": (
-                has_stat(r"\d+\s*%?\s*chance\s+to\s+cast.*?frost\s+nova.*?when\s+struck")
-                or has_stat(r"frost\s+nova.*?when\s+struck")
-            ) and has_stat(r"attacker\s+takes\s+damage"),
-            "Safety": has_stat(r"damage\s+reduced\s+by\s+\d+(?:-\d+)?") and has_stat(
+                has_ring_stat(r"\d+\s*%?\s*chance\s+to\s+cast.*?frost\s+nova.*?when\s+struck")
+                or has_ring_stat(r"frost\s+nova.*?when\s+struck")
+            ) and has_ring_stat(r"attacker\s+takes\s+damage"),
+            "Safety": has_ring_stat(r"damage\s+reduced\s+by\s+\d+(?:-\d+)?") and has_ring_stat(
                 r"magic\s+damage\s+reduced\s+by\s+\d+(?:-\d+)?"
             ),
         }
