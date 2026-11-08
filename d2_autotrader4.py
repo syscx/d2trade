@@ -362,11 +362,144 @@ def classify_crafted_item_title(ocr_text, task_id):
         )
         return None
 
-    # Non-glove equipment keeps its existing recipe-family rules.
-    # Require the characteristic stat pair for each recipe family.
+    # Ring recipes have distinct fixed-mod pairs. Match the numeric OCR
+    # variants (for example "+ 15 to Life"), not only the stat-name fragments.
+    def has_stat(pattern):
+        return bool(re.search(pattern, text, re.IGNORECASE))
+
+    if is_ring:
+        # Some OCR engines confuse a standalone "I"/"l" with the digit "1"
+        # in numeric stat rolls (for example, "Reduced By I"). Correct only
+        # isolated characters, not letters inside ordinary words.
+        ring_text = re.sub(r"\b[il]\b", "1", text)
+
+        def has_ring_stat(pattern):
+            return bool(re.search(pattern, ring_text, re.IGNORECASE))
+
+        # Caster Ring's fixed +10-20 Mana line is occasionally truncated by
+        # diablo2.io OCR to a bare "+19". Accept that orphan number only when
+        # it directly precedes the Mana Regeneration line and is in the
+        # recipe's known 10-20 range; do not infer mana from arbitrary numbers.
+        has_caster_mana = (
+            has_ring_stat(r"\+\s*\d+\s+(?:to\s+)?mana\b")
+            or has_ring_stat(
+                r"\+\s*(?:1[0-9]|20)\s+(?=(?:regenerate\s+mana|mana\s+regeneration)\b)"
+            )
+        )
+        ring_checks = {
+            "Blood": (
+                has_ring_stat(r"\b\d+(?:-\d+)?\s*%?\s*life\s+stolen\s+per\s+hit\b")
+                or has_ring_stat(r"\b\d+(?:-\d+)?\s*%?\s*(?:life\s+leech|life\s+steal)\b")
+            ) and has_ring_stat(r"\+\s*\d+\s+(?:to\s+)?life\b"),
+            "Caster": (
+                has_ring_stat(r"\bregenerate\s+mana\b")
+                or has_ring_stat(r"\bmana\s+regeneration\b")
+            ) and has_caster_mana,
+            "Hit Power": (
+                has_ring_stat(r"\d+\s*%?\s*chance\s+to\s+cast.*?frost\s+nova.*?when\s+struck")
+                or has_ring_stat(r"frost\s+nova.*?when\s+struck")
+            ) and has_ring_stat(r"attacker\s+takes\s+damage"),
+            "Safety": has_ring_stat(r"damage\s+reduced\s+by\s+\d+(?:-\d+)?") and has_ring_stat(
+                r"magic\s+damage\s+reduced\s+by\s+\d+(?:-\d+)?"
+            ),
+        }
+        matched_rings = [family for family, matched in ring_checks.items() if matched]
+        if len(matched_rings) != 1:
+            print(f"[{task_id}] Ring Craft 特徵不唯一或不足（{matched_rings}）；保留網站 OCR 原標題。")
+            return None
+        title = f"{matched_rings[0]} Ring"
+        print(f"[{task_id}] 依 Ring 固定屬性分類為：{title}")
+        return title
+
+    # Amulets have their own recipe signatures. Do not reuse ring checks:
+    # Blood Amulet adds Faster Run/Walk; Caster Amulet adds Faster Cast Rate;
+    # Hit Power Amulet adds Monster Flee; Safety Amulet adds Chance of Blocking.
+    if is_amulet:
+        # Correct isolated OCR I/l substitutions in numeric rolls only.
+        amulet_text = re.sub(r"\b[il]\b", "1", text)
+
+        def has_amulet_stat(pattern):
+            return bool(re.search(pattern, amulet_text, re.IGNORECASE))
+
+        has_amulet_life_leech = (
+            has_amulet_stat(r"\b\d+(?:-\d+)?\s*%?\s*life\s+stolen\s+per\s+hit\b")
+            or has_amulet_stat(r"\b\d+(?:-\d+)?\s*%?\s*(?:life\s+leech|life\s+steal)\b")
+        )
+        has_amulet_life = has_amulet_stat(r"\+\s*\d+(?:-\d+)?\s+(?:to\s+)?life\b")
+        has_faster_run_walk = has_amulet_stat(
+            r"\b\d+(?:-\d+)?\s*%?\s*faster\s+run\s*(?:/\s*|and\s+)?walk\b"
+        ) or has_amulet_stat(r"\b\d+(?:-\d+)?\s*%?\s*faster\s+run(?:ning)?\b")
+
+        has_faster_cast_rate = has_amulet_stat(
+            r"\b\d+(?:-\d+)?\s*%?\s*faster\s+cast(?:ing)?\s+rate\b"
+        ) or has_amulet_stat(r"\b\d+(?:-\d+)?\s*%?\s*fcr\b")
+        has_amulet_mana_regen = (
+            has_amulet_stat(r"\bregenerate\s+mana\s+\d+(?:-\d+)?\s*%?")
+            or has_amulet_stat(r"\bmana\s+regeneration\s+\d+(?:-\d+)?\s*%?")
+        )
+        # diablo2.io OCR may truncate the fixed +10-20 Mana line to
+        # a bare "+N" immediately before "Regenerate Mana".
+        has_amulet_mana = (
+            has_amulet_stat(r"\+\s*\d+(?:-\d+)?\s+(?:to\s+)?mana\b")
+            or has_amulet_stat(
+                r"\+\s*(?:1[0-9]|20)\s+(?=(?:regenerate\s+mana|mana\s+regeneration)\b)"
+            )
+        )
+
+        has_amulet_frost_nova = has_amulet_stat(
+            r"\b5\s*%?\s*chance\s+to\s+cast\s+(?:level\s+)?4\s+frost\s+nova\s+when\s+struck\b"
+        ) or has_amulet_stat(r"\bfrost\s+nova\s+when\s+struck\b")
+        has_monster_flee = has_amulet_stat(
+            r"\bhit\s+causes\s+monster\s+to\s+flee\s+\+?\s*\d+(?:-\d+)?\s*%?"
+        ) or has_amulet_stat(
+            r"\bmonster\s+flees\s+\+?\s*\d+(?:-\d+)?\s*%?"
+        )
+        has_amulet_attacker_damage = has_amulet_stat(
+            r"\battacker\s+takes\s+damage\s+(?:of\s+)?\d+(?:-\d+)?\b"
+        )
+
+        has_block_chance = has_amulet_stat(
+            r"\+?\s*\d+(?:-\d+)?\s*%?\s*increased\s+chance\s+of\s+blocking\b"
+        ) or has_amulet_stat(
+            r"\b\d+(?:-\d+)?\s*%?\s*increased\s+chance\s+to\s+block\b"
+        )
+        has_amulet_damage_reduce = has_amulet_stat(
+            r"\bdamage\s+reduced\s+by\s+\d+(?:-\d+)?\b"
+        )
+        has_amulet_magic_reduce = has_amulet_stat(
+            r"\bmagic\s+damage\s+reduced\s+by\s+\d+(?:-\d+)?\b"
+        )
+
+        amulet_checks = {
+            # Blood Amulet: all three fixed modifiers are distinct from Blood Ring.
+            "Blood": has_amulet_life_leech and has_amulet_life and has_faster_run_walk,
+            # Caster Amulet: FCR is mandatory; do not confuse it with Caster Ring.
+            "Caster": has_faster_cast_rate and has_amulet_mana_regen and has_amulet_mana,
+            # Hit Power Amulet: Monster Flee is unique to this amulet recipe.
+            "Hit Power": has_amulet_frost_nova and has_monster_flee and has_amulet_attacker_damage,
+            # Safety Amulet: blocking chance distinguishes it from Safety Ring.
+            "Safety": has_block_chance and has_amulet_damage_reduce and has_amulet_magic_reduce,
+        }
+        matched_amulets = [
+            family for family, matched in amulet_checks.items() if matched
+        ]
+        if len(matched_amulets) != 1:
+            print(
+                f"[{task_id}] Amulet Craft 特徵不唯一或不足（{matched_amulets}）；"
+                "保留網站 OCR 原標題。"
+            )
+            return None
+        title = f"{matched_amulets[0]} Amulet"
+        print(f"[{task_id}] 依 Amulet 專屬固定屬性分類為：{title}")
+        return title
+
+    # Non-ring, non-glove equipment keeps its existing recipe-family rules.
+    # Numeric values are allowed between '+' and the stat name in OCR output.
     has_mana_regen = "regenerate mana" in text or "mana regeneration" in text
-    has_plus_mana = any(token in text for token in ("+ to mana", "+ mana", "increase maximum mana"))
-    has_life = "+ to life" in text or "+ life" in text
+    has_plus_mana = bool(re.search(
+        r"\\+\\s*\\d+\\s+(?:to\\s+)?mana\\b|increase maximum mana", text
+    ))
+    has_life = bool(re.search(r"\\+\\s*\\d+\\s+(?:to\\s+)?life\\b", text))
     has_life_leech = "life stolen per hit" in text or "life leech" in text or "life steal" in text
     has_damage_reduce = "damage reduced by" in text or "damage reduction" in text
     has_magic_reduce = "magic damage reduced by" in text or "magic damage reduction" in text
