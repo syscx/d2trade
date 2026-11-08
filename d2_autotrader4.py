@@ -236,7 +236,20 @@ def classify_crafted_item_title(ocr_text, task_id):
     is_boots = any(term.strip() in text for term in boot_terms)
     is_ring = "ring" in text
     is_amulet = "amulet" in text
-    item_types = [name for name, matched in (("Boots", is_boots), ("Ring", is_ring), ("Amulet", is_amulet)) if matched]
+    # Crafted gloves can appear under several base names in D2R, not just "Gloves".
+    # Include the elite/exceptional gauntlet, bracer, mitt, and vambrace variants.
+    glove_terms = (
+        "gloves", "gauntlets", "bracers", "mitts", "vambraces",
+    )
+    is_gloves = any(term in text for term in glove_terms)
+    item_types = [
+        name for name, matched in (
+            ("Boots", is_boots),
+            ("Ring", is_ring),
+            ("Amulet", is_amulet),
+            ("Gloves", is_gloves),
+        ) if matched
+    ]
     if len(item_types) != 1:
         print(f"[{task_id}] OCR 無法唯一判斷物品種類；保留原標題。")
         return None
