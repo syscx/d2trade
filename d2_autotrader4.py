@@ -255,18 +255,24 @@ def classify_crafted_item_title(ocr_text, task_id):
         "crusader gauntlets",
         "ogre gauntlets",
     )
-    is_gloves = any(
-        re.search(rf"(?<!\w){re.escape(base_name)}(?!\w)", text)
-        for base_name in glove_base_names
-    )
-    item_types = [
-        name for name, matched in (
-            ("Boots", is_boots),
-            ("Ring", is_ring),
-            ("Amulet", is_amulet),
-            ("Gloves", is_gloves),
-        ) if matched
+    matched_glove_bases = [
+        base_name for base_name in glove_base_names
+        if re.search(rf"(?<!\w){re.escape(base_name)}(?!\w)", text)
     ]
+    is_gloves = bool(matched_glove_bases)
+    item_type_flags = {
+        "Boots": is_boots,
+        "Ring": is_ring,
+        "Amulet": is_amulet,
+        "Gloves": is_gloves,
+    }
+    item_types = [name for name, matched in item_type_flags.items() if matched]
+    print(
+        f"[{task_id}] 分類診斷："
+        f"boots={is_boots}, ring={is_ring}, amulet={is_amulet}, "
+        f"gloves={is_gloves}, glove_bases={matched_glove_bases}, "
+        f"item_types={item_types}"
+    )
     if len(item_types) != 1:
         print(f"[{task_id}] OCR 無法唯一判斷物品種類；保留原標題。")
         return None
@@ -625,6 +631,7 @@ def on_f9_pressed():
 def main():
     print("==========================================================")
     print("  D2R 一鍵 [F9] 安全單執行緒核心 ➔ 共用登入狀態")
+    print("  Classifier diagnostic build: glove-itemtype-2026-11-08")
     print("==========================================================")
     print("正在初始化共享瀏覽器核心，請稍候...")
     with sync_playwright() as p:
