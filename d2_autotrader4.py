@@ -437,7 +437,14 @@ def classify_crafted_item_title(ocr_text, task_id):
             has_amulet_stat(r"\bregenerate\s+mana\s+\d+(?:-\d+)?\s*%?")
             or has_amulet_stat(r"\bmana\s+regeneration\s+\d+(?:-\d+)?\s*%?")
         )
-        has_amulet_mana = has_amulet_stat(r"\+\s*\d+(?:-\d+)?\s+(?:to\s+)?mana\b")
+        # diablo2.io OCR may truncate the fixed +10-20 Mana line to
+        # a bare "+N" immediately before "Regenerate Mana".
+        has_amulet_mana = (
+            has_amulet_stat(r"\+\s*\d+(?:-\d+)?\s+(?:to\s+)?mana\b")
+            or has_amulet_stat(
+                r"\+\s*(?:1[0-9]|20)\s+(?=(?:regenerate\s+mana|mana\s+regeneration)\b)"
+            )
+        )
 
         has_amulet_frost_nova = has_amulet_stat(
             r"\b5\s*%?\s*chance\s+to\s+cast\s+(?:level\s+)?4\s+frost\s+nova\s+when\s+struck\b"
