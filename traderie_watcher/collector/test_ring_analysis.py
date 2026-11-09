@@ -1,5 +1,5 @@
 import unittest
-from ring_analysis import extract_ring_properties
+from ring_analysis import extract_ring_properties, score_ring_stats
 from valuation import format_pskull_value, rune_bundle_value_pskulls
 
 class BloodRingTests(unittest.TestCase):
@@ -31,6 +31,37 @@ class BloodRingTests(unittest.TestCase):
             self.assertEqual(item["random_affix_count"], len(item["random_affixes"]))
             self.assertEqual(len(item["random_affixes"]), len(set(item["random_affixes"])))
             self.assertEqual(len(item["visible_text"].splitlines()), 4 + item["random_affix_count"])
+
+    def test_reduced_life_leech_weight(self):
+        score, reasons = score_ring_stats({"life_leech": 3})
+        self.assertEqual(score, 1)
+        self.assertTrue(any("reduced weight" in reason for reason in reasons))
+
+    def test_low_attack_rating_is_penalized(self):
+        score, _ = score_ring_stats({"attack_rating": 59})
+        self.assertEqual(score, -1)
+
+    def test_attack_rating_60_to_99_is_weak_positive(self):
+        score, _ = score_ring_stats({"attack_rating": 60})
+        self.assertEqual(score, 0.5)
+
+    def test_all_resistance_below_four_is_low_value(self):
+        score, _ = score_ring_stats({"all_resist": 3})
+        self.assertEqual(score, 0.5)
+
+    def test_dexterity_magic_find_and_gold_find_are_parsed(self):
+        item = extract_ring_properties("Rare Ring",
+            "+12 to Dexterity\\n25% Better Chance of Getting Magic Items\\n80% Extra Gold from Monsters")
+        self.assertEqual(item["stats"]["dexterity"], 12)
+        self.assertEqual(item["stats"]["magic_find"], 25)
+        self.assertEqual(item["stats"]["gold_find"], 80)
+
+    def test_magic_find_and_gold_find_have_weak_weights(self):
+        mf_score, _ = score_ring_stats({"magic_find": 25})
+        gf_score, _ = score_ring_stats({"gold_find": 80})
+        self.assertEqual(mf_score, 1)
+        self.assertEqual(gf_score, 0.5)
+
 
 class RuneValueDisplayTests(unittest.TestCase):
     def test_values_above_two_ist_show_remainder_in_pskulls(self):
