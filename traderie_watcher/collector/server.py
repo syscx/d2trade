@@ -11,7 +11,9 @@ import sqlite3
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
+
+from jewel_analysis import analyze_listing, comparable_offer_summary
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("TRADERIE_WATCHER_DB", ROOT / "traderie_observations.sqlite3"))
@@ -48,6 +50,20 @@ def initialize() -> None:
                 ON observations(captured_at);
             CREATE INDEX IF NOT EXISTS idx_observations_listing_key
                 ON observations(listing_key);
+            CREATE TABLE IF NOT EXISTS jewel_analyses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                observation_id INTEGER NOT NULL UNIQUE REFERENCES observations(id),
+                analyzed_at TEXT NOT NULL,
+                item_type TEXT NOT NULL,
+                quality_hint TEXT,
+                stats_json TEXT NOT NULL,
+                recommendation_json TEXT NOT NULL,
+                displayed_asking_price TEXT,
+                requested_trade_text TEXT,
+                raw_text TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_jewel_analyses_stats
+                ON jewel_analyses(stats_json);
         """)
 
 
@@ -75,10 +91,44 @@ class Handler(BaseHTTPRequestHandler):
         self._json(204, {})
 
     def do_GET(self) -> None:
-        if urlparse(self.path).path == "/health":
+        path = urlparse(self.path)
+        if path.path == "/health":
             self._json(200, {"ok": True, "database": str(DB_PATH)})
-        else:
-            self._json(404, {"error": "not found"})
+            return
+        if path.path == "/jewels":
+            try:
+                limit = min(max(int(parse_qs(path.query).get("limit", ["50"])[0]), 1), 200)
+                with connect() as db:
+                    rows = db.execute("""
+                        SELECT j.*, o.listing_key, o.listing_title, o.source_url, o.captured_at
+                        FROM jewel_analyses j
+                        JOIN observations o ON o.id = j.observation_id
+                        ORDER BY j.id DESC LIMIT ?
+                    """, (limit,)).fetchall()
+                    results = []
+                    for row in rows:
+                        stats = json.loads(row["stats_json"])
+                        recommendation = json.loads(row["recommendation_json"])
+                        results.append({
+                            "observation_id": row["observation_id"],
+                            "listing_title": row["listing_title"],
+                            "listing_url": row["source_url"],
+                            "captured_at": row["captured_at"],
+                            "quality_hint": row["quality_hint"],
+                            "stats": stats,
+                            "price_observation": {
+                                "displayed_asking_price": row["displayed_asking_price"],
+                                "requested_trade_text": row["requested_trade_text"],
+                                "is_confirmed_sale": False
+                            },
+                            "recommendation": recommendation,
+                            "market_comparables": comparable_offer_summary(db, stats, row["observation_id"])
+                        })
+                self._json(200, {"ok": True, "count": len(results), "jewels": results})
+            except (ValueError, TypeError):
+                self._json(400, {"error": "invalid limit"})
+            return
+        self._json(404, {"error": "not found"})
 
     def do_POST(self) -> None:
         if urlparse(self.path).path != "/observations":
@@ -125,7 +175,26 @@ class Handler(BaseHTTPRequestHandler):
                     str(listing.get("visible_text") or "")[:4000],
                     json.dumps(payload, ensure_ascii=False)
                 ))
-            self._json(201, {"ok": True, "id": cursor.lastrowid})
+                if kind == "listing_snapshot":
+                    analysis = analyze_listing(listing)
+                    if analysis:
+                        db.execute("""
+                            INSERT OR REPLACE INTO jewel_analyses (
+                                observation_id, analyzed_at, item_type, quality_hint,
+                                stats_json, recommendation_json, displayed_asking_price,
+                                requested_trade_text, raw_text
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            cursor.lastrowid, datetime.now(timezone.utc).isoformat(),
+                            analysis["item_type"], analysis["quality_hint"],
+                            json.dumps(analysis["stats"], sort_keys=True),
+                            json.dumps(analysis["recommendation"], ensure_ascii=False),
+                            analysis["price_observation"]["displayed_asking_price"],
+                            analysis["price_observation"]["requested_trade_text"],
+                            analysis["raw_text"]
+                        ))
+            self._json(201, {"ok": True, "id": cursor.lastrowid,
+                             "jewel_analyzed": bool(kind == "listing_snapshot" and analysis)})
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             self._json(400, {"error": str(exc)})
         except Exception as exc:  # Keep the server alive; report a concise error.
