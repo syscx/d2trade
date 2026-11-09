@@ -145,35 +145,74 @@ class Handler(BaseHTTPRequestHandler):
     if not visible.strip(): raise ValueError("visible_text is required")
     analysis=extract_ring_properties(title,visible)
     if not analysis: raise ValueError("input does not look like a ring")
-    # Numeric values are based only on manually verified sales linked to analyzed Blood rings.
+    # Completed-sale page records are automatically usable market evidence.
+    # Their 90% reliability is a statistical weight, not a 10% price discount.
+    from jewel_analysis import parse_rune_request
     with connect() as db:
-     rows=db.execute("""SELECT vs.sale_value_pskulls,ra.stats_json
-       FROM verified_sales vs JOIN ring_analyses ra ON ra.observation_id=vs.observation_id
-       WHERE vs.verified=1 AND vs.sale_value_pskulls IS NOT NULL
-       AND ra.craft_type='blood_candidate' ORDER BY vs.sold_at DESC""").fetchall()
+     rows=db.execute("""SELECT o.id,o.listing_key,o.payload_json,o.captured_at,ra.stats_json
+       FROM observations o JOIN ring_analyses ra ON ra.observation_id=o.id
+       WHERE o.observation_type='listing_snapshot' AND ra.craft_type='blood_candidate'
+       ORDER BY o.captured_at DESC,o.id DESC""").fetchall()
     target=analysis["stats"]
+    seen=set()
     comps=[]
     for row in rows:
-     other=json.loads(row["stats_json"])
-     if other.get("fcr") != target.get("fcr"): continue
-     shared=set(target).intersection(other)
-     if len(shared)<2: continue
-     distance=sum(abs(float(target[k])-float(other[k])) /
-       max(abs(float(target[k])),abs(float(other[k])),10) for k in shared)
-     comps.append((distance,float(row["sale_value_pskulls"])))
-    comps.sort(key=lambda x:x[0])
-    selected=comps[:10]
+     try:
+      saved=json.loads(row["payload_json"])
+      listing=saved.get("listing") or {}
+      if listing.get("record_type") != "completed_sale_observation": continue
+      # Repeated scans of one Traderie listing count once; keep its newest snapshot.
+      listing_key=row["listing_key"] or str(row["id"])
+      if listing_key in seen: continue
+      seen.add(listing_key)
+      trade_text=(listing.get("i_give_text") or listing.get("observed_trade_text") or "").strip()
+      runes=parse_rune_request(trade_text)
+      price=rune_bundle_value_pskulls(runes)
+      if price["value_pskulls"] is None: continue
+      other=json.loads(row["stats_json"])
+      if other.get("fcr") != target.get("fcr"): continue
+      shared=set(target).intersection(other)
+      if len(shared)<2: continue
+      distance=sum(abs(float(target[k])-float(other[k])) /
+       max(abs(float(target[k])),abs(float(other[k])),10) for k in shared)/len(shared)
+      # 0.90 expresses the user's estimated reliability of completed-sale cards.
+      comps.append({"distance":distance,"value":float(price["value_pskulls"]),
+       "weight":0.90,"observation_id":row["id"],"trade_text":trade_text,
+       "listing_key":listing_key,"captured_at":row["captured_at"]})
+     except (ValueError,TypeError,KeyError,json.JSONDecodeError):
+      continue
+    comps.sort(key=lambda x:x["distance"])
+    selected=comps[:20]
     if len(selected)>=3:
-     values=sorted(x[1] for x in selected)
+     # Weighted quantiles. Equal default reliability weights preserve the observed
+     # market distribution; distance weighting favors closer stat matches.
+     weighted=[]
+     for item in selected:
+      weighted.append((item["value"],item["weight"]/(1.0+item["distance"])))
+     weighted.sort(key=lambda x:x[0])
+     total_weight=sum(w for _,w in weighted)
+     def weighted_quantile(q):
+      threshold=total_weight*q
+      running=0.0
+      for value,weight in weighted:
+       running+=weight
+       if running>=threshold: return value
+      return weighted[-1][0]
      valuation={"status":"estimate_available","currency":"Pskulls",
-       "low":values[int((len(values)-1)*0.25)],"median":median(values),
-       "high":values[int((len(values)-1)*0.75)],
-       "comparable_verified_sales":len(selected),
-       "note":"Rough range from manually verified Blood-ring sales with matching FCR."}
+       "low":weighted_quantile(0.25),"median":weighted_quantile(0.50),
+       "high":weighted_quantile(0.75),
+       "comparable_sales":len(selected),"reliability_weight":0.90,
+       "effective_weight":round(total_weight,3),
+       "note":"Automatic estimate from completed-sale page records; 90% default reliability weight. Values are normalized to Pskulls. Displayed sale terms may still be noisy.",
+       "comparables":[{"observation_id":x["observation_id"],"price_pskulls":x["value"],
+        "distance":round(x["distance"],3),"reliability":x["weight"],
+        "trade_text":x["trade_text"]} for x in selected[:10]]}
     else:
      valuation={"status":"insufficient_data","currency":"Pskulls",
-       "low":None,"median":None,"high":None,"comparable_verified_sales":len(selected),
-       "note":"At least 3 comparable manually verified Blood-ring sales are required. No price is guessed."}
+       "low":None,"median":None,"high":None,"comparable_sales":len(selected),
+       "reliability_weight":0.90,
+       "note":"At least 3 automatically collected completed-sale Blood-ring records with known Ist/Jah/Pskull values and matching FCR plus two shared stats are required.",
+       "comparables":[]}
     self._json(200,{"ok":True,"synthetic":bool(payload.get("synthetic",False)),
       "analysis":analysis,"valuation":valuation}); return
    if path=="/observations":
