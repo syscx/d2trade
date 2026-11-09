@@ -108,9 +108,10 @@ class Handler(BaseHTTPRequestHandler):
      out.append({"observation_id":r["observation_id"],"listing_title":r["listing_title"],
       "listing_url":urljoin(r["source_url"],r["listing_key"]) if r["listing_key"] else r["source_url"],
       "captured_at":r["captured_at"],"quality_hint":r["quality_hint"],"stats":stats,
-      "price_observation":{"displayed_asking_price":r["displayed_asking_price"],
-       "observed_trade_text":r["requested_trade_text"],"observed_runes":runes,
-       "observed_rune_value":rune_bundle_value_pskulls(runes),"transaction_status":"unknown","is_confirmed_sale":False},
+      "sale_observation":{"observed_trade_text":r["requested_trade_text"],"observed_runes":runes,
+       "observed_rune_value":rune_bundle_value_pskulls(runes),"record_type":"completed_sale_page_record",
+       "transaction_status":"completed_sale_page_record","is_completed_sale_page_record":True,
+       "sale_price_reliability":"uncertain_possible_overstatement","numeric_estimate":None},
       "recommendation":json.loads(r["recommendation_json"]),
       "market_comparables":comparable_offer_summary(db,stats,r["observation_id"])})
    self._json(200,{"ok":True,"count":len(out),"jewels":out}); return
