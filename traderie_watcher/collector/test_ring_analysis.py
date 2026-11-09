@@ -35,6 +35,7 @@ class BloodRingTests(unittest.TestCase):
     def test_mana_leech_is_extracted_and_scored(self):
         item = extract_ring_properties("Blood Ring", "+10% Faster Cast Rate\\n6% Mana Stolen Per Hit\\n3% Life Stolen Per Hit\\n+6 to Dexterity")
         self.assertEqual(item["stats"]["mana_leech"], 6)
+        self.assertEqual(item["stats"]["life_leech"], 3)
         self.assertGreaterEqual(score_ring_stats(item["stats"])[0], 7)
 
     def test_premium_affix_mismatch_is_explicit(self):
