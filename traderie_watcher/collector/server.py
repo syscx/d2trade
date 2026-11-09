@@ -112,7 +112,7 @@ class Handler(BaseHTTPRequestHandler):
                         results.append({
                             "observation_id": row["observation_id"],
                             "listing_title": row["listing_title"],
-                            "listing_url": row["source_url"],
+                            "listing_url": row["listing_key"] or row["source_url"],
                             "captured_at": row["captured_at"],
                             "quality_hint": row["quality_hint"],
                             "stats": stats,
