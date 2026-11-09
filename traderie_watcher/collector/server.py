@@ -109,8 +109,8 @@ class Handler(BaseHTTPRequestHandler):
       "listing_url":urljoin(r["source_url"],r["listing_key"]) if r["listing_key"] else r["source_url"],
       "captured_at":r["captured_at"],"quality_hint":r["quality_hint"],"stats":stats,
       "price_observation":{"displayed_asking_price":r["displayed_asking_price"],
-       "requested_trade_text":r["requested_trade_text"],"requested_runes":runes,
-       "requested_rune_value":rune_bundle_value_pskulls(runes),"is_confirmed_sale":False},
+       "observed_trade_text":r["requested_trade_text"],"observed_runes":runes,
+       "observed_rune_value":rune_bundle_value_pskulls(runes),"transaction_status":"unknown","is_confirmed_sale":False},
       "recommendation":json.loads(r["recommendation_json"]),
       "market_comparables":comparable_offer_summary(db,stats,r["observation_id"])})
    self._json(200,{"ok":True,"count":len(out),"jewels":out}); return
@@ -158,12 +158,12 @@ class Handler(BaseHTTPRequestHandler):
      if kind=="listing_snapshot":
       jewel=analyze_listing(listing)
       if jewel:
-       pr=jewel["price_observation"]
+       pr=jewel["trade_observation"]
        db.execute("""INSERT INTO jewel_analyses(observation_id,analyzed_at,item_type,quality_hint,stats_json,
         recommendation_json,displayed_asking_price,requested_trade_text,raw_text,requested_runes_json)
         VALUES(?,?,?,?,?,?,?,?,?,?)""",(cur.lastrowid,datetime.now(timezone.utc).isoformat(),jewel["item_type"],
         jewel["quality_hint"],json.dumps(jewel["stats"],sort_keys=True),json.dumps(jewel["recommendation"],ensure_ascii=False),
-        pr["displayed_asking_price"],pr["requested_trade_text"],jewel["raw_text"],json.dumps(pr["requested_runes"],ensure_ascii=False)))
+        pr["displayed_asking_price"],pr["observed_trade_text"],jewel["raw_text"],json.dumps(pr["observed_runes"],ensure_ascii=False)))
        analyzed["jewel"]=True
       ring=extract_ring_properties(str(listing.get("title") or ""),str(listing.get("visible_text") or ""))
       if ring:
