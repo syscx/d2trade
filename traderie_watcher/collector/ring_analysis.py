@@ -5,8 +5,8 @@ from typing import Any
 
 PATTERNS = {
  "fcr":[r"(\d{1,2})\s*%?\s*(?:faster\s+cast\s+rate|fcr)\b"],
- "life_leech":[r"(\d{1,2})\s*%?\s*(?:life\s+)?(?:stolen|leech)\s+per\s+hit",r"(\d{1,2})\s*%?\s*life\s+leech"],
- "mana_leech":[r"(\d{1,2})\s*%?\s*(?:mana\s+)?(?:stolen|leech)\s+per\s+hit",r"(\d{1,2})\s*%?\s*mana\s+leech"],
+ "life_leech":[r"(\d{1,2})\s*%?\s*life\s+(?:stolen|leech)\s+per\s+hit",r"(\d{1,2})\s*%?\s*life\s+leech"],
+ "mana_leech":[r"(\d{1,2})\s*%?\s*mana\s+(?:stolen|leech)\s+per\s+hit",r"(\d{1,2})\s*%?\s*mana\s+leech"],
  "life":[r"[+]?([\d]{1,3})\s+to\s+life\b"],
  "strength":[r"[+]?([\d]{1,2})\s+to\s+strength\b"],
  "dexterity":[r"[+]?([\d]{1,2})\s+to\s+dexterity\b"],
@@ -18,7 +18,7 @@ PATTERNS = {
  "mana":[r"[+]?([\d]{1,3})\s+to\s+mana\b"],
  "attack_rating":[r"[+]?([\d]{1,3})\s+to\s+attack\s+rating\b"],
  "magic_find":[r"(\d{1,2})\s*%?\s*better\s+chance\s+of\s+getting\s+magic\s+items?"],
- "gold_find":[r"(\d{1,3})\s*%?\s*(?:extra\s+ gold|gold\s+find)"],
+ "gold_find":[r"(\d{1,3})\s*%?\s*(?:extra\s+gold|gold\s+find)"],
  "life_replenish":[r"replenish\s+life\s*\+?\s*(\d{1,2})",r"\+(\d{1,2})\s+replenish\s+life"],
 }
 
