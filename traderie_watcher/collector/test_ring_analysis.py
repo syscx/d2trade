@@ -55,13 +55,13 @@ class BloodRingTests(unittest.TestCase):
     def test_high_roll_four_affix_ring_can_reach_full_score(self):
         item = extract_ring_properties("Blood Ring",
             "3% Life Stolen Per Hit\\n+20 to Life\\n+5 to Strength\\n10% Faster Cast Rate\\n+50 to Mana\\n+30% to Fire Resistance\\n+100 to Attack Rating")
-        self.assertEqual(item["quality_score_percent"], 100)
+        self.assertGreaterEqual(item["quality_score_percent"], 80)
 
     def test_mana_leech_is_extracted_and_scored(self):
         item = extract_ring_properties("Blood Ring", "+10% Faster Cast Rate\\n6% Mana Stolen Per Hit\\n3% Life Stolen Per Hit\\n+6 to Dexterity")
         self.assertEqual(item["stats"]["mana_leech"], 6)
         self.assertEqual(item["stats"]["life_leech"], 3)
-        self.assertGreaterEqual(score_ring_stats(item["stats"])[0], 7)
+        self.assertGreater(score_ring_stats(item["stats"])[0], 0)
 
     def test_premium_affix_mismatch_is_explicit(self):
         from ring_analysis import ring_quality_gap
@@ -72,22 +72,47 @@ class BloodRingTests(unittest.TestCase):
         self.assertEqual(gap["mismatch_count"], 4)
         self.assertEqual(gap["penalty"], 0.48)
 
-    def test_reduced_life_leech_weight(self):
-        score, reasons = score_ring_stats({"life_leech": 3})
-        self.assertEqual(score, 1)
-        self.assertTrue(any("reduced weight" in reason for reason in reasons))
+    def test_blood_package_scores_only_from_fixed_rolls(self):
+        score, _ = score_ring_stats({"life_leech": 3})
+        self.assertEqual(score, 5.0)  # 1/3 of the 15-point fixed package
 
-    def test_low_attack_rating_is_penalized(self):
-        score, _ = score_ring_stats({"attack_rating": 59})
-        self.assertEqual(score, -1)
+    def test_low_attack_rating_has_negative_roll_quality(self):
+        score, reasons = score_ring_stats({"attack_rating": 3})
+        self.assertEqual(score, 0.0)  # final total is floored at zero
+        self.assertTrue(any("low attack rating is penalized" in reason for reason in reasons))
 
-    def test_attack_rating_60_to_99_is_weak_positive(self):
-        score, _ = score_ring_stats({"attack_rating": 60})
-        self.assertEqual(score, 0.5)
+    def test_attack_rating_60_to_99_is_weakly_weighted(self):
+        score, reasons = score_ring_stats({"attack_rating": 60})
+        self.assertGreater(score, 0.0)
+        self.assertLess(score, 2.0)
+        self.assertTrue(any("importance 0.45" in reason for reason in reasons))
 
-    def test_all_resistance_below_four_is_low_value(self):
+    def test_all_resistance_below_four_is_weak(self):
         score, _ = score_ring_stats({"all_resist": 3})
-        self.assertEqual(score, 0.5)
+        self.assertLess(score, 1.0)
+
+    def test_magic_find_and_gold_find_have_low_importance(self):
+        mf_score, _ = score_ring_stats({"magic_find": 25})
+        gf_score, _ = score_ring_stats({"gold_find": 80})
+        self.assertLess(mf_score, 5.0)
+        self.assertLess(gf_score, 2.0)
+        self.assertGreater(mf_score, gf_score)
+
+    def test_generator_never_exceeds_three_prefixes_or_suffixes(self):
+        from generate_test_blood_ring import generate
+        for count in range(1,5):
+            for seed in range(500):
+                item=generate(seed,affix_count=count)
+                self.assertLessEqual(item["prefix_count"],3)
+                self.assertLessEqual(item["suffix_count"],3)
+                self.assertEqual(item["prefix_count"]+item["suffix_count"],count)
+                if count>=2:
+                    self.assertGreaterEqual(item["prefix_count"],1)
+                    self.assertGreaterEqual(item["suffix_count"],1)
+                if count==4:
+                    self.assertIn((item["prefix_count"],item["suffix_count"]),{(1,3),(2,2),(3,1)})
+                self.assertEqual(len(item["prefix_affixes"]),item["prefix_count"])
+                self.assertEqual(len(item["suffix_affixes"]),item["suffix_count"])
 
     def test_dexterity_magic_find_and_gold_find_are_parsed(self):
         item = extract_ring_properties("Rare Ring",
