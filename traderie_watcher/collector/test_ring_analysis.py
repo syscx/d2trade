@@ -22,7 +22,18 @@ class BloodRingTests(unittest.TestCase):
     def test_non_ring_is_ignored(self):
         self.assertIsNone(extract_ring_properties("Jah Rune", "10% Faster Cast Rate"))
 
-    def test_synthetic_generator_uses_at_most_four_random_affixes(self):
+    def test_synthetic_generator_always_emits_fixed_blood_mods(self):
+        from generate_test_blood_ring import generate
+        for seed in range(100):
+            item = generate(seed, affix_count=4)
+            self.assertEqual(set(item["fixed_mods"]), {"life_leech", "life", "strength"})
+            self.assertEqual(item["random_affix_count"], 4)
+            self.assertEqual(len(item["random_affixes"]), 4)
+            self.assertIn("Life Stolen Per Hit", item["visible_text"])
+            self.assertIn("to Life", item["visible_text"])
+            self.assertIn("to Strength", item["visible_text"])
+
+    def test_synthetic_generator_uses_one_to_four_random_affixes(self):
         from generate_test_blood_ring import generate
         for seed in range(100):
             item = generate(seed)
@@ -31,6 +42,20 @@ class BloodRingTests(unittest.TestCase):
             self.assertEqual(item["random_affix_count"], len(item["random_affixes"]))
             self.assertEqual(len(item["random_affixes"]), len(set(item["random_affixes"])))
             self.assertEqual(len(item["visible_text"].splitlines()), 4 + item["random_affix_count"])
+
+    def test_user_example_ring_has_four_affixes_and_poor_combo(self):
+        item = extract_ring_properties("Blood Ring",
+            "1% Life Stolen Per Hit\\n+10 to Life\\n+1 to Strength\\n10% Faster Cast Rate\\n+18 to Mana\\n+13% to Fire Resistance\\n+3 to Attack Rating")
+        self.assertEqual(item["random_affix_count"], 4)
+        self.assertTrue(item["poor_stat_combination"])
+        self.assertLess(item["quality_score_percent"], 90)
+        self.assertEqual(item["stats"]["fcr"], 10)
+        self.assertEqual(item["stats"]["attack_rating"], 3)
+
+    def test_high_roll_four_affix_ring_can_reach_full_score(self):
+        item = extract_ring_properties("Blood Ring",
+            "3% Life Stolen Per Hit\\n+20 to Life\\n+5 to Strength\\n10% Faster Cast Rate\\n+50 to Mana\\n+30% to Fire Resistance\\n+100 to Attack Rating")
+        self.assertEqual(item["quality_score_percent"], 100)
 
     def test_mana_leech_is_extracted_and_scored(self):
         item = extract_ring_properties("Blood Ring", "+10% Faster Cast Rate\\n6% Mana Stolen Per Hit\\n3% Life Stolen Per Hit\\n+6 to Dexterity")
