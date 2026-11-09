@@ -37,7 +37,7 @@ def format_pskull_value(value: float | int | None) -> str | None:
         whole_ist = int(amount // IST_VALUE_PSKULLS)
         remainder = round(amount - whole_ist * IST_VALUE_PSKULLS, 4)
         if remainder == 0:
-            return f"{whole_ist} Ist"
+            return f"{amount / IST_VALUE_PSKULLS:.2f} Ist"
         return f"{whole_ist} Ist + {remainder:g} Pskulls"
     if amount == 2 * IST_VALUE_PSKULLS:
         return "2 Ist"
