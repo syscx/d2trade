@@ -1,19 +1,24 @@
 (() => {
   "use strict";
 
-  // Traderie's DOM can change. Keep selectors centralized and fail closed:
-  // only elements matching these listing-like structures are considered.
+  // Verified against a live Traderie listing DOM supplied during testing.
+  // Keep the exact site selectors first; the fallback selectors remain
+  // conservative so unrelated page sections are not recorded as listings.
   const CARD_SELECTORS = [
+    ".offer-listing-item",
     ".listing-card",
     '[data-testid*="listing"]',
     '[class*="listing-card"]',
     '[class*="ListingCard"]'
   ];
+  const TITLE_SELECTOR = "a.listing-name.selling-listing";
   const MAX_CARDS_PER_SCAN = 100;
   const MAX_TEXT_LENGTH = 4000;
   const sentFingerprints = new Set();
   let scanTimer = null;
   let lastPageContext = "";
+
+  const clean = value => (value || "").replace(/\\s+/g, " ").trim().slice(0, MAX_TEXT_LENGTH);
 
   const isVisible = element => {
     if (!(element instanceof Element)) return false;
@@ -26,15 +31,13 @@
       rect.bottom > 0 && rect.top < window.innerHeight;
   };
 
-  const clean = value => (value || "").replace(/\s+/g, " ").trim().slice(0, MAX_TEXT_LENGTH);
-
   function getPageContext() {
     const params = new URLSearchParams(location.search);
     const searchInput = document.querySelector(
       'input[type="search"], input[placeholder*="Search" i], input[aria-label*="Search" i]'
     );
     return {
-      page_type: /\/items?\//i.test(location.pathname) ? "item_or_listing" :
+      page_type: /\\/items?\\//i.test(location.pathname) ? "item_or_listing" :
         (params.size ? "search_or_filtered" : "traderie_page"),
       pathname: location.pathname,
       query: clean(params.toString()),
@@ -50,29 +53,72 @@
         if (found.size < MAX_CARDS_PER_SCAN && isVisible(element)) found.add(element);
       });
     }
+
+    // The verified title link is a safe anchor for finding its known card.
+    document.querySelectorAll(TITLE_SELECTOR).forEach(link => {
+      const card = link.closest(".offer-listing-item");
+      if (card && found.size < MAX_CARDS_PER_SCAN && isVisible(card)) found.add(card);
+    });
     return [...found];
+  }
+
+  function getTradeSides(card) {
+    const lines = (card.innerText || "")
+      .split(/\\r?\\n/)
+      .map(line => line.trim())
+      .filter(Boolean);
+    const theyIndex = lines.findIndex(line => /^they give$/i.test(line));
+    const iIndex = lines.findIndex(line => /^i give$/i.test(line));
+    const ageIndex = lines.findIndex(line => /^\\d+\\s+(?:seconds?|minutes?|hours?|days?|weeks?)\\s+ago$/i.test(line));
+
+    const sliceSide = (start, end) => {
+      if (start < 0) return null;
+      return clean(lines.slice(start + 1, end > start ? end : lines.length)
+        .filter(line => !/^high rune value\\s*:/i.test(line))
+        .join(" | ")) || null;
+    };
+
+    if (theyIndex >= 0 || iIndex >= 0) {
+      const end = ageIndex >= 0 ? ageIndex : lines.length;
+      return {
+        they_give_text: theyIndex >= 0 ? sliceSide(theyIndex, iIndex >= 0 ? iIndex : end) : null,
+        i_give_text: iIndex >= 0 ? sliceSide(iIndex, end) : null
+      };
+    }
+    return { they_give_text: null, i_give_text: null };
   }
 
   function extractListing(card) {
     const text = clean(card.innerText || card.textContent);
     if (text.length < 8) return null;
 
-    const link = card.matches("a[href]") ? card : card.querySelector("a[href]");
-    const href = link?.href && /^https:\/\/(www\.)?traderie\.com\//i.test(link.href)
-      ? new URL(link.href).pathname + new URL(link.href).search
+    const titleLink = card.querySelector(TITLE_SELECTOR);
+    const link = titleLink || card.querySelector("a[href*='/listing/']");
+    const url = link?.href ? new URL(link.href) : null;
+    const href = url && url.protocol === "https:" &&
+      ["traderie.com", "www.traderie.com"].includes(url.hostname)
+      ? url.pathname + url.search
       : null;
-    const heading = card.querySelector("h1,h2,h3,h4,[class*=" + '"title"' + " i],[class*=" + '"name"' + " i]");
-    const title = clean(heading?.innerText || link?.innerText || "").slice(0, 300);
 
-    // Capture a displayed asking price as text only; do not infer trade value.
-    const priceMatch = text.match(/(?:\b(?:price|asking)\s*[:：]?\s*)?\b\d+(?:[.,]\d+)?\s*(?:ist|rune[s]?|ber|jah|sur|ohm|lo|vex|gul|mal|ist|um|pul|lem|ko|fal|io|lum|hel|dol|shael|amn|sol|ral|ort|thul|tir|nef|eth|el)\b/i);
+    let title = "";
+    if (titleLink) {
+      const titleClone = titleLink.cloneNode(true);
+      titleClone.querySelectorAll(".listing-container").forEach(node => node.remove());
+      title = clean(titleClone.innerText || titleClone.textContent);
+    } else if (link) {
+      title = clean(link.innerText || link.textContent);
+    }
+
+    const tradeSides = getTradeSides(card);
     return {
-      listing_key: href || null,
+      listing_key: href,
       listing_path: href,
-      title,
-      asking_price_text: priceMatch ? clean(priceMatch[0]) : null,
+      title: title.slice(0, 300),
+      listing_type: tradeSides.they_give_text || tradeSides.i_give_text ? "barter_offer" : "unknown",
+      asking_price_text: null,
+      ...tradeSides,
       visible_text: text,
-      extraction_method: "visible_dom_heuristic_v1"
+      extraction_method: "verified_offer_listing_item_v2"
     };
   }
 
@@ -94,11 +140,12 @@
 
     for (const card of findListingCards()) {
       const listing = extractListing(card);
-      if (!listing) continue;
+      if (!listing || !listing.listing_path) continue;
       const fingerprint = JSON.stringify({
         path: listing.listing_path,
         title: listing.title,
-        price: listing.asking_price_text,
+        they: listing.they_give_text,
+        i: listing.i_give_text,
         text: listing.visible_text
       });
       if (sentFingerprints.has(fingerprint)) continue;
@@ -110,7 +157,6 @@
       });
     }
 
-    // Bound memory use during long browsing sessions.
     if (sentFingerprints.size > 5000) sentFingerprints.clear();
   }
 
