@@ -63,9 +63,11 @@ def blood_craft_quality(stats: dict[str, int]) -> float:
  ranges = {"life_leech":(1,3), "life":(10,20), "strength":(1,5)}
  values=[]
  for key,(minimum,maximum) in ranges.items():
-  if key in stats:
-   values.append(_clamp((stats[key]-minimum)/(maximum-minimum)))
- return sum(values)/len(values) if values else 0.0
+  # Missing fixed mods are treated as unverified/zero quality rather than
+  # silently averaging only the properties the parser happened to find.
+  value=stats.get(key)
+  values.append(_clamp((value-minimum)/(maximum-minimum)) if value is not None else 0.0)
+ return sum(values)/3.0
 
 def score_ring_stats(stats: dict[str, int]) -> tuple[float, list[str]]:
  """Return 0-100 quality score and an auditable per-slot explanation."""
