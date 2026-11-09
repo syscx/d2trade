@@ -316,8 +316,9 @@ class Handler(BaseHTTPRequestHandler):
           "score_gap":x["score_gap"],"quality_gap":x["quality_gap"],"quality_penalty":x["quality_penalty"],"shared_stats":x["shared_stats"],
           "distance_components":x["distance_components"]} for x in selected],
          "next_closest_not_selected":[{"observation_id":x["observation_id"],"price_display":format_pskull_value(x["value"]),
-          "stats":x["stats"],"heuristic_score":x["heuristic_score"],"distance":round(x["distance"],4)}
-          for x in comps[20:25]]},
+          "stats":x["stats"],"heuristic_score":x["heuristic_score"],"distance":round(x["distance"],4),
+          "quality_gap":x["quality_gap"],"rejection_reason":"outside_distance_threshold" if x["distance"] > MAX_COMPARABLE_DISTANCE else "top_20_limit"}
+          for x in comps if x not in selected][:25]},
        "note":"Completed-sale page records only. Comparables must pass a strict quality-aware distance threshold; premium-affix mismatches are penalized. 90% is a reliability weight, not a price discount."}
      valuation["comparables"]=[{"observation_id":x["observation_id"],"price_pskulls":x["value"],
         "price_display":format_pskull_value(x["value"]),"distance":round(x["distance"],4),
