@@ -60,7 +60,7 @@ def parse_rune_request(text: str | None) -> list[dict[str,Any]]:
  if not text:
   return []
  names=r"(El|Eld|Tir|Nef|Eth|Ith|Tal|Ral|Ort|Thul|Amn|Sol|Shael|Dol|Hel|Io|Lum|Ko|Fal|Lem|Pul|Um|Mal|Ist|Gul|Vex|Ohm|Lo|Sur|Ber|Jah|Cham|Zod)"
- pattern=rf"(?<![A-Za-z])(?:(\\d+)\\s*[xX]?\\s*)?{names}(?:\\s*rune)?(?![A-Za-z])"
+ pattern=rf"(?<![A-Za-z])(?:(\d+)\s*[xX]?\s*)?{names}(?:\s*rune)?(?![A-Za-z])"
  found=[]
  for match in re.finditer(pattern,text,re.I):
   found.append({"quantity":int(match.group(1) or 1),"rune":match.group(2).title()})
