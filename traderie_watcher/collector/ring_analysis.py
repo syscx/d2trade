@@ -36,7 +36,9 @@ def score_ring_stats(stats: dict[str, int]) -> tuple[float, list[str]]:
  if leech: add(1,"Life leech (reduced weight)")
  for key,label in (("life","Life"),("strength","Strength"),("dexterity","Dexterity")):
   value=stats.get(key,0)
-  if value>=40 and key=="life": add(2,f"High {label}")
+  if key=="life":
+   if value>=40: add(2,"High Life")
+   elif value>0: add(1,"Additional Life")
   elif value>=10: add(2,f"High {label}")
   elif value>0: add(1,f"Additional {label}")
  ar=stats.get("attack_rating",0)
