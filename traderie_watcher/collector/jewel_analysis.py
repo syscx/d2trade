@@ -63,8 +63,12 @@ def parse_rune_request(text: str | None) -> list[dict[str,Any]]:
 def analyze_listing(listing: dict[str,Any]) -> dict[str,Any] | None:
  extracted=extract_jewel_properties(str(listing.get("title") or ""),str(listing.get("visible_text") or ""))
  if extracted is None: return None
- trade=listing.get("i_give_text"); asking=listing.get("asking_price_text")
- return {**extracted,"trade_observation":{"displayed_asking_price":None,"observed_trade_text":trade or None,"observed_runes":parse_rune_request(trade),"price_kind":"observed_completed_sale_trade_terms","transaction_status":"completed_sale_page_record","is_confirmed_sale":True,"sale_price_reliability":"uncertain_possible_overstatement","numeric_estimate":None,"note":"Captured from Traderie completed-sales page; trade terms are evidence of a completed-sale record, but displayed value may overstate the actual deal."},"recommendation":recommend_jewel(extracted["stats"])}
+ trade=listing.get("observed_trade_text") or listing.get("i_give_text") or listing.get("asking_price_text")
+ record_type=listing.get("record_type") or "completed_sale_observation"
+ is_sale=record_type=="completed_sale_observation"
+ status="completed_sale_page_record" if is_sale else ("active_or_asking" if record_type=="active_listing_ask" else "unknown")
+ note="Completed-sales page record; displayed trade terms may overstate the actual deal." if is_sale else ("Active listing asking terms; not a completed sale." if record_type=="active_listing_ask" else "Trade direction could not be identified.")
+ return {**extracted,"record_type":record_type,"trade_observation":{"displayed_asking_price":None,"observed_trade_text":trade or None,"observed_runes":parse_rune_request(trade),"price_kind":"observed_completed_sale_trade_terms" if is_sale else ("seller_asking_terms" if record_type=="active_listing_ask" else "unknown"),"transaction_status":status,"is_confirmed_sale":is_sale,"sale_price_reliability":"uncertain_possible_overstatement" if is_sale else None,"numeric_estimate":None,"note":note},"recommendation":recommend_jewel(extracted["stats"])}
 
 def stat_similarity(left: dict[str,int], right: dict[str,int]) -> float:
  shared=set(left)&set(right)
