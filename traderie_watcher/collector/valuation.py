@@ -21,6 +21,28 @@ DEFAULT_RUNE_VALUES_PSKULLS = {
 def normalize_rune_name(name: str) -> str:
     return name.strip().title()
 
+
+def format_pskull_value(value: float | int | None) -> str | None:
+    """Format values above 2 Ist as whole Ist plus the Pskull remainder.
+
+    Example: 39 Pskulls -> "2 Ist + 9 Pskulls". Values at or below
+    2 Ist retain the compact Pskull/Ist representation.
+    """
+    if value is None:
+        return None
+    amount = round(float(value), 4)
+    if amount < 0:
+        raise ValueError("value cannot be negative")
+    if amount > 2 * IST_VALUE_PSKULLS:
+        whole_ist = int(amount // IST_VALUE_PSKULLS)
+        remainder = round(amount - whole_ist * IST_VALUE_PSKULLS, 4)
+        if remainder == 0:
+            return f"{whole_ist} Ist"
+        return f"{whole_ist} Ist + {remainder:g} Pskulls"
+    if amount >= IST_VALUE_PSKULLS:
+        return f"{amount / IST_VALUE_PSKULLS:g} Ist"
+    return f"{amount:g} Pskulls"
+
 def rune_bundle_value_pskulls(runes: list[dict], rates: dict[str, float] | None = None) -> dict:
     if not runes:
         return {"value_pskulls": None, "display": None, "missing_rune_rates": [],
@@ -43,6 +65,6 @@ def rune_bundle_value_pskulls(runes: list[dict], rates: dict[str, float] | None 
         return {"value_pskulls": None, "display": None,
                 "missing_rune_rates": sorted(set(missing)),
                 "ist_anchor_pskulls": IST_VALUE_PSKULLS}
-    display = f"{total:g} Pskulls" if total < IST_VALUE_PSKULLS else f"{total / IST_VALUE_PSKULLS:.2f} Ist"
+    display = format_pskull_value(total)
     return {"value_pskulls": round(total, 4), "display": display,
             "missing_rune_rates": [], "ist_anchor_pskulls": IST_VALUE_PSKULLS}
