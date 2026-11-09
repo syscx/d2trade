@@ -1,5 +1,6 @@
 import unittest
 from ring_analysis import extract_ring_properties
+from valuation import format_pskull_value, rune_bundle_value_pskulls
 
 class BloodRingTests(unittest.TestCase):
     def test_extracts_10_fcr_blood_ring(self):
@@ -30,6 +31,24 @@ class BloodRingTests(unittest.TestCase):
             self.assertEqual(item["random_affix_count"], len(item["random_affixes"]))
             self.assertEqual(len(item["random_affixes"]), len(set(item["random_affixes"])))
             self.assertEqual(len(item["visible_text"].splitlines()), 4 + item["random_affix_count"])
+
+class RuneValueDisplayTests(unittest.TestCase):
+    def test_values_above_two_ist_show_remainder_in_pskulls(self):
+        self.assertEqual(format_pskull_value(39), "2 Ist + 9 Pskulls")
+        self.assertEqual(format_pskull_value(45), "3 Ist")
+
+    def test_two_ist_threshold_keeps_compact_format(self):
+        self.assertEqual(format_pskull_value(30), "2 Ist")
+        self.assertEqual(format_pskull_value(29), "29 Pskulls")
+
+    def test_user_rune_rates_use_mixed_display(self):
+        result = rune_bundle_value_pskulls([
+            {"rune": "Ist", "quantity": 2},
+            {"rune": "Perfect Skull", "quantity": 9},
+        ])
+        self.assertEqual(result["value_pskulls"], 39)
+        self.assertEqual(result["display"], "2 Ist + 9 Pskulls")
+
 
 if __name__ == "__main__":
     unittest.main()
