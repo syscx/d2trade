@@ -284,58 +284,97 @@ class Handler(BaseHTTPRequestHandler):
     comps.sort(key=lambda x:x["distance"])
     diagnostics["eligible_before_top_20"]=len(comps)
     MAX_COMPARABLE_DISTANCE=0.55
-    selected=[x for x in comps if x["distance"] <= MAX_COMPARABLE_DISTANCE][:20]
+    close=[x for x in comps if x["distance"] <= MAX_COMPARABLE_DISTANCE]
+    selected=(close if len(close)>=3 else comps)[:20]
     diagnostics["distance_threshold"]=MAX_COMPARABLE_DISTANCE
     diagnostics["rejected_by_distance"]=sum(1 for x in comps if x["distance"] > MAX_COMPARABLE_DISTANCE)
-    if len(selected)>=3:
-     weighted=[(item["value"],item["weight"]/(1.0+item["distance"])) for item in selected]
-     weighted.sort(key=lambda x:x[0])
-     total_weight=sum(w for _,w in weighted)
-     def weighted_quantile(q):
-      threshold=total_weight*q
-      running=0.0
-      for value,weight in weighted:
-       running+=weight
-       if running>=threshold: return value
-      return weighted[-1][0]
-     low=weighted_quantile(0.25); med=weighted_quantile(0.50); high=weighted_quantile(0.75)
-     valuation={"status":"estimate_available","currency":"Pskulls",
-       "low":low,"median":med,"high":high,
-       "display":{"low":format_pskull_value(low),"median":format_pskull_value(med),"high":format_pskull_value(high)},
-       "comparable_sales":len(selected),"eligible_comparable_sales":len(comps),
-       "reliability_weight":0.90,"effective_weight":round(total_weight,3),
-       "price_distribution":[{"price_pskulls":price,"price_display":format_pskull_value(price),
-         "sale_count":sum(1 for x in selected if x["value"]==price)}
-         for price in sorted({x["value"] for x in selected})],
-       "diagnostics":{"target_stats":target,"target_heuristic_score":target_score,
-         "target_verdict":analysis["verdict"],"selection_method":"same FCR; weighted stat distance; premium-affix mismatch penalty; heuristic-score gap penalty; max distance 0.55",
-         "counts":diagnostics,"selected_comparables":[{"observation_id":x["observation_id"],
-          "captured_at":x["captured_at"],"price_pskulls":x["value"],"price_display":format_pskull_value(x["value"]),
-          "trade_text":x["trade_text"],"stats":x["stats"],"heuristic_score":x["heuristic_score"],
-          "distance":round(x["distance"],4),"stat_distance":round(x["stat_distance"],4),
-          "score_gap":x["score_gap"],"quality_gap":x["quality_gap"],"quality_penalty":x["quality_penalty"],"shared_stats":x["shared_stats"],
-          "distance_components":x["distance_components"]} for x in selected],
-         "next_closest_not_selected":[{"observation_id":x["observation_id"],"price_display":format_pskull_value(x["value"]),
-          "stats":x["stats"],"heuristic_score":x["heuristic_score"],"distance":round(x["distance"],4),
-          "quality_gap":x["quality_gap"],"rejection_reason":"outside_distance_threshold" if x["distance"] > MAX_COMPARABLE_DISTANCE else "top_20_limit"}
-          for x in comps if x not in selected][:25]},
-       "note":"Completed-sale page records only. Comparables must pass a strict quality-aware distance threshold; premium-affix mismatches are penalized. 90% is a reliability weight, not a price discount."}
-     valuation["comparables"]=[{"observation_id":x["observation_id"],"price_pskulls":x["value"],
-        "price_display":format_pskull_value(x["value"]),"distance":round(x["distance"],4),
-        "reliability":x["weight"],"trade_text":x["trade_text"],
-        "stats":x["stats"],"heuristic_score":x["heuristic_score"]} for x in selected]
+    diagnostics["close_comparables"]=len(close)
+    diagnostics["distance_fallback_used"]=bool(comps and len(close)<3)
+
+    quality_percent=float(analysis.get("quality_score_percent",target_score))
+    poor_combination=bool(analysis.get("poor_stat_combination"))
+    low_quality_cap=(quality_percent < 90.0 and poor_combination)
+    # If we have any completed sales, let the nearest sales inform the estimate.
+    # Gaussian distance weights rapidly reduce influence from weak matches.
+    adjusted=[]
+    for item in selected:
+     bandwidth=0.65
+     distance_weight=__import__("math").exp(-((item["distance"]/bandwidth)**2))
+     # Quality adjustment is directional: do not price a weaker target like a
+     # premium comparable. Keep the exponent conservative to avoid wild swings.
+     comparable_quality=max(float(item["heuristic_score"]),1.0)
+     target_quality=max(quality_percent,1.0)
+     quality_ratio=max(0.25,min(2.5,target_quality/comparable_quality))
+     adjusted_price=max(0.0,item["value"]*(quality_ratio**0.75))
+     combined_weight=item["weight"]*distance_weight
+     adjusted.append({**item,"distance_weight":distance_weight,
+      "quality_ratio":quality_ratio,"adjusted_price":adjusted_price,
+      "combined_weight":combined_weight})
+    adjusted.sort(key=lambda x:x["adjusted_price"])
+
+    def weighted_quantile(items,q):
+     total=sum(x["combined_weight"] for x in items)
+     if not items or total<=0: return None
+     threshold=total*q
+     running=0.0
+     for item in items:
+      running+=item["combined_weight"]
+      if running>=threshold: return item["adjusted_price"]
+     return items[-1]["adjusted_price"]
+
+    if low_quality_cap:
+     # User's rule: only rings both below 90% and with poor stat combinations
+     # receive this conservative fallback. Score 28.25 maps to about 10 Pskulls.
+     fallback=max(1.0,min(15.0,quality_percent*0.35))
+     low=max(1.0,fallback*0.75); med=fallback; high=min(15.0,fallback*1.25)
+     method="low_quality_cap"
+     confidence="low"
+     note="Both conditions met: quality below 90% and poor stat combination. Conservative score-based fallback, capped at 15 Pskulls."
+    elif adjusted:
+     low=weighted_quantile(adjusted,0.25)
+     med=weighted_quantile(adjusted,0.50)
+     high=weighted_quantile(adjusted,0.75)
+     method="distance_weighted_completed_sales" if diagnostics["distance_fallback_used"] else "completed_sale_comparables"
+     confidence="high" if len(close)>=3 else ("medium" if selected[0]["distance"]<=0.75 else "low")
+     note="Completed sales only. Gaussian distance weights and directional quality adjustment reduce influence from distant or superior rings. 90% is sale reliability weight, not a price discount."
     else:
-     valuation={"status":"insufficient_data","currency":"Pskulls","low":None,"median":None,"high":None,
-       "comparable_sales":len(selected),"eligible_comparable_sales":len(comps),"reliability_weight":0.90,
-       "diagnostics":{"target_stats":target,"target_heuristic_score":target_score,"counts":diagnostics,
-        "eligible_comparables":[{"observation_id":x["observation_id"],"price_display":format_pskull_value(x["value"]),
-         "stats":x["stats"],"heuristic_score":x["heuristic_score"],"distance":round(x["distance"],4)} for x in selected],
-        "closest_candidates":[{"observation_id":x["observation_id"],"price_display":format_pskull_value(x["value"]),
-         "stats":x["stats"],"heuristic_score":x["heuristic_score"],"distance":round(x["distance"],4),
-         "stat_distance":round(x["stat_distance"],4),"score_gap":x["score_gap"],
-         "quality_gap":x["quality_gap"],"quality_penalty":x["quality_penalty"],
-         "distance_components":x["distance_components"]} for x in comps[:25]]},
-       "note":"At least 3 completed-sale Blood-ring records with known prices, matching FCR, and quality-aware distance <= 0.55 are required. No price is forced when close matches are insufficient."}
+     # Last-resort estimate only when no usable historical sale exists.
+     fallback=max(1.0,quality_percent*0.35)
+     low=fallback*0.75; med=fallback; high=fallback*1.25
+     method="quality_score_fallback"
+     confidence="very_low"
+     note="No parseable completed-sale Blood Ring comparables exist; estimate is heuristic only and should be recalibrated when sales are collected."
+    valuation={"status":"estimate_available","currency":"Pskulls",
+     "low":round(low,2),"median":round(med,2),"high":round(high,2),
+     "display":{"low":format_pskull_value(low),"median":format_pskull_value(med),"high":format_pskull_value(high)},
+     "comparable_sales":len(selected),"eligible_comparable_sales":len(comps),
+     "reliability_weight":0.90,"valuation_method":method,"confidence":confidence,
+     "quality_score_percent":quality_percent,"poor_stat_combination":poor_combination,
+     "effective_weight":round(sum(x["combined_weight"] for x in adjusted),4),
+     "diagnostics":{"target_stats":target,"target_quality_score":quality_percent,
+      "target_verdict":analysis["verdict"],"counts":diagnostics,
+      "selection_method":"same FCR; closest completed sales; Gaussian distance weighting; directional quality adjustment",
+      "selected_comparables":[{"observation_id":x["observation_id"],
+       "captured_at":x["captured_at"],"sale_price_pskulls":x["value"],
+       "sale_price_display":format_pskull_value(x["value"]),
+       "adjusted_price_pskulls":round(x["adjusted_price"],2),
+       "adjusted_price_display":format_pskull_value(x["adjusted_price"]),
+       "distance":round(x["distance"],4),"distance_weight":round(x["distance_weight"],4),
+       "quality_ratio":round(x["quality_ratio"],4),"weight":round(x["combined_weight"],4),
+       "stats":x["stats"],"quality_score":x["heuristic_score"],
+       "quality_gap":x["quality_gap"],"distance_components":x["distance_components"]}
+       for x in adjusted],
+      "closest_candidates":[{"observation_id":x["observation_id"],
+       "price_display":format_pskull_value(x["value"]),"stats":x["stats"],
+       "quality_score":x["heuristic_score"],"distance":round(x["distance"],4)}
+       for x in comps[:25]]},
+     "note":note}
+    valuation["comparables"]=[{"observation_id":x["observation_id"],
+      "sale_price_pskulls":x["value"],"sale_price_display":format_pskull_value(x["value"]),
+      "estimated_contribution_pskulls":round(x["adjusted_price"],2),
+      "distance":round(x["distance"],4),"reliability":x["weight"],
+      "distance_weight":round(x["distance_weight"],4),"trade_text":x["trade_text"],
+      "stats":x["stats"],"quality_score":x["heuristic_score"]} for x in adjusted]
     self._json(200,{"ok":True,"synthetic":bool(payload.get("synthetic",False)),
       "analysis":analysis,"valuation":valuation}); return
    if path=="/observations":
