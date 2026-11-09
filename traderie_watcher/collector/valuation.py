@@ -13,6 +13,8 @@ def normalize_rune_name(name: str) -> str:
  return name.strip().title()
 
 def rune_bundle_value_pskulls(runes: list[dict], rates: dict[str,float] | None=None) -> dict:
+ if not runes:
+  return {"value_pskulls":None,"display":None,"missing_rune_rates":[],"ist_anchor_pskulls":IST_VALUE_PSKULLS}
  table=dict(DEFAULT_RUNE_VALUES_PSKULLS)
  if rates: table.update({normalize_rune_name(k):float(v) for k,v in rates.items()})
  total=0.0; missing=[]
