@@ -10,7 +10,8 @@ class RuneValuationTests(unittest.TestCase):
     def test_jah_is_225_pskulls(self):
         r = rune_bundle_value_pskulls([{"rune": "Jah", "quantity": 1}])
         self.assertEqual(r["value_pskulls"], 225)
-        self.assertEqual(r["display"], "15.00 Ist")
+        # Large exact Ist multiples use the compact display format.
+        self.assertEqual(r["display"], "15 Ist")
 
     def test_multiple_jah_and_ist(self):
         r = rune_bundle_value_pskulls([
