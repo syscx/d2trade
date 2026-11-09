@@ -41,7 +41,7 @@ def generate(seed=None, affix_count=None):
     return {
         "synthetic": True,
         "title": "Blood Ring (SYNTHETIC TEST DATA)",
-        "visible_text": "\\n".join(lines),
+        "visible_text": "\n".join(lines),
         "fixed_mods": fixed,
         "fixed_mods_present": sorted(fixed),
         "random_affix_count": count,
