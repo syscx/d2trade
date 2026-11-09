@@ -45,14 +45,31 @@ The SQLite file is created beside `server.py` by default. Set
 Start the Python collector before browsing. The extension does not control
 Traderie; it only observes content already rendered in the tab.
 
-## Important prototype limitation
+## Structured jewel analysis
 
-Traderie's production DOM selectors have not yet been verified against a live
-page in this implementation environment. The extension uses conservative,
-centralized selector heuristics. If it records page context but no listing
-snapshots, inspect the listing card markup in Chrome DevTools and update
-`CARD_SELECTORS` in `extension/content.js`. Do not broaden selectors to the
-entire page: that would create noisy or misleading records.
+The local collector now analyzes captured listing snapshots whose title or
+visible text identifies a jewel. It stores recognized stats separately in the
+`jewel_analyses` table, while preserving the original observation unchanged.
+
+Recognized first-pass properties include IAS, Enhanced Damage, Maximum Damage,
+Minimum Damage, All Resistances, Life, Faster Hit Recovery, Strength, and
+Dexterity. Extraction is heuristic: always compare the structured values with
+the raw listing text before trusting them.
+
+The collector also stores the displayed asking-price text and/or the
+`I Give` barter request separately. These are seller asks, not confirmed
+completed sales. It deliberately returns no numeric fair-value estimate until
+there is enough reliable comparable-market data.
+
+After restarting the collector, view recent jewel analyses at:
+
+`http://127.0.0.1:8765/jewels`
+
+Optional: `/jewels?limit=100` (maximum 200).
+
+Each result includes structured stats, raw price/trade observations, a
+heuristic recommendation, and exact-stat comparable asking offers when
+available. The recommendation is a screening aid, not an appraisal.
 
 ## Data quality rules
 
