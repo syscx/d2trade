@@ -77,3 +77,61 @@ Each row is an observation at a point in time. Repeated observations for the
 same listing path can later be compared to detect price changes. A missing
 listing is not proof of sale. All displayed prices remain asking-price
 observations unless the user separately records a confirmed transaction.
+
+
+## Blood-ring analysis and synthetic test
+
+Listing snapshots with ring titles are also analyzed into a separate `ring_analyses`
+table. The first pass recognizes FCR, life leech, life, strength, dexterity,
+resistances, mana, attack rating, and replenish life. A life-leech ring is
+marked a **blood-ring candidate**, not conclusively identified as a Blood craft.
+FCR blood-ring screening is heuristic and does not produce a market price.
+
+View recent ring analyses at:
+
+`http://127.0.0.1:8765/rings`
+
+Generate a random synthetic ring locally (it is never submitted or stored):
+
+```bash
+python collector/generate_test_blood_ring.py
+```
+
+Use `--seed 123` to reproduce a test case. Synthetic data is explicitly labeled
+and must never be mixed with observed Traderie listings or verified sales.
+
+## Rune and item valuation units
+
+The user's current reference anchor is **1 Ist = 15 Perfect Skulls (Pskulls)**.
+Sub-Ist values are displayed in Pskulls. Perfect Skull is treated as one
+Pskull unit. Other rune exchange rates are deliberately left unknown until
+configured from the user's own dated market observations; the collector will
+not invent rates. Rune barter requests are now persisted as structured
+quantity/name records as well as preserving the seller's original text.
+
+## Recording verified completed sales
+
+A listing disappearing or a seller's asking price is not a sale. A completed
+sale must be entered separately and explicitly verified by the user.
+
+Local API:
+
+- `POST /sales` records a verified sale only when `verified: true`,
+  `observation_id`, `sale_price_text`, and `verification_method` are supplied.
+- Optional `sale_runes` is a list such as
+  `[{"rune":"Ist","quantity":1},{"rune":"Perfect Skull","quantity":4}]`.
+- `GET /sales` returns only records explicitly entered as verified.
+- The numeric Pskull total is returned only when every rune/item in the bundle
+  has a configured conversion rate. Unknown rates stay unknown.
+
+Example local request (replace observation ID and actual sale details):
+
+```bash
+curl -X POST http://127.0.0.1:8765/sales ^
+  -H "Content-Type: application/json" ^
+  -d "{\"verified\":true,\"observation_id\":123,\"sale_price_text\":\"1 Ist + 4 Perfect Skulls\",\"sale_runes\":[{\"rune\":\"Ist\",\"quantity\":1},{\"rune\":\"Perfect Skull\",\"quantity\":4}],\"verification_method\":\"user_confirmed\",\"evidence_note\":\"Confirmed completed trade\"}"
+```
+
+The API binds to loopback only. Treat the verified-sales table as manually
+curated training/evaluation data; do not automatically label listing snapshots
+as sold.
