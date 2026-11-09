@@ -11,9 +11,9 @@ class JewelTests(unittest.TestCase):
   self.assertIsNone(extract_jewel_properties('Jah Rune','15% Increased Attack Speed'))
  def test_trade_request_is_not_sale(self):
   r=analyze_listing({'title':'Rare Jewel','visible_text':'15% Increased Attack Speed\n29% Enhanced Damage','i_give_text':'1 X Ohm Rune'})
-  self.assertFalse(r['price_observation']['is_confirmed_sale'])
-  self.assertEqual(r['price_observation']['requested_runes'],[{'quantity':1,'rune':'Ohm'}])
-  self.assertIsNone(r['price_observation']['numeric_estimate'])
+  self.assertFalse(r['trade_observation']['is_confirmed_sale'])
+  self.assertEqual(r['trade_observation']['observed_runes'],[{'quantity':1,'rune':'Ohm'}])
+  self.assertIsNone(r['trade_observation']['numeric_estimate'])
  def test_multiple_runes(self):
   self.assertEqual(parse_rune_request('1 X Ber Rune | 1 X Ist Rune'),[{'quantity':1,'rune':'Ber'},{'quantity':1,'rune':'Ist'}])
  def test_nearby_stats_match(self):
