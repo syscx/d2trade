@@ -102,12 +102,15 @@ and must never be mixed with observed Traderie listings or verified sales.
 
 ## Rune and item valuation units
 
-The user's current reference anchor is **1 Ist = 15 Perfect Skulls (Pskulls)**.
-Sub-Ist values are displayed in Pskulls. Perfect Skull is treated as one
-Pskull unit. Other rune exchange rates are deliberately left unknown until
-configured from the user's own dated market observations; the collector will
-not invent rates. Rune barter requests are now persisted as structured
-quantity/name records as well as preserving the seller's original text.
+The configured reference rates are **1 Ist = 15 Pskulls** and **1 Jah = 15 Ist = 225 Pskulls**. Perfect Skull is one Pskull unit. Other rune rates remain unknown rather than guessed. Rune barter requests are parsed into structured quantity/name records while preserving the original text.
+
+## Automatic Blood-ring sale valuation
+
+`POST /analyze/ring` now reads the existing SQLite observations directly. It automatically considers listing snapshots labeled `completed_sale_observation`, joins them to the backfilled `ring_analyses` table, parses the observed `I Give` rune terms, and converts known Ist/Jah/Pskull bundles into Pskulls. Active listing asks are excluded. Repeated observations of the same listing path are counted once.
+
+Completed-sale page records receive a default **0.90 reliability weight** (90%). This is a confidence weight, not a 10% discount to their prices. Similarity to the target ring also affects each record's weight. At least three comparable records are required for a preliminary weighted 25th/50th/75th percentile range. FCR must match exactly; rings with and without 10% FCR are not mixed. Records with unsupported rune prices are excluded from numeric estimates but remain in the raw observations.
+
+This is an automated estimate based on Traderie's completed-sales page evidence, not a guaranteed final transaction price. The endpoint includes comparable observation IDs and source trade text so estimates can be inspected later.
 
 ## Recording verified completed sales
 
