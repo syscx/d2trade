@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urljoin
 from jewel_analysis import analyze_listing, comparable_offer_summary, parse_rune_request
-from ring_analysis import extract_ring_properties, score_ring_stats
+from ring_analysis import extract_ring_properties, score_ring_stats, ring_quality_gap
 from valuation import rune_bundle_value_pskulls, format_pskull_value
 
 ROOT=Path(__file__).resolve().parent
@@ -260,7 +260,7 @@ class Handler(BaseHTTPRequestHandler):
       # Compare the union, not just shared stats: missing premium stats count as zero.
       # This prevents a weak target from matching only on its few overlapping stats.
       union=set(target).union(other)
-      stat_weights={"fcr":2.0,"life_leech":1.0,"life":1.5,"strength":1.2,"dexterity":1.2,
+      stat_weights={"fcr":2.0,"life_leech":1.5,"mana_leech":2.0,"life":1.5,"strength":1.4,"dexterity":1.5,
         "attack_rating":1.0,"all_resist":1.0,"fire_resist":0.8,"cold_resist":0.8,
         "lightning_resist":0.8,"poison_resist":0.8,"mana":0.7,"magic_find":0.5,"gold_find":0.25}
       distance_parts={}
@@ -271,8 +271,10 @@ class Handler(BaseHTTPRequestHandler):
       stat_distance=sum(distance_parts.values())/max(sum(stat_weights.get(k,1.0) for k in union),1.0)
       other_score,_=score_ring_stats(other)
       score_gap=abs(target_score-other_score)
-      distance=stat_distance+(score_gap/10.0)*0.75
-      comps.append({"distance":distance,"stat_distance":stat_distance,"score_gap":score_gap,
+      quality=ring_quality_gap(target,other)
+      quality_penalty=quality["penalty"]
+      distance=stat_distance+(score_gap/10.0)*0.75+quality_penalty
+      comps.append({"distance":distance,"stat_distance":stat_distance,"score_gap":score_gap,"quality_gap":quality,"quality_penalty":quality_penalty,
        "value":float(price["value_pskulls"]),"weight":0.90,"observation_id":row["id"],
        "trade_text":trade_text,"listing_key":listing_key,"captured_at":row["captured_at"],
        "stats":other,"heuristic_score":other_score,"shared_stats":sorted(shared),
@@ -281,7 +283,10 @@ class Handler(BaseHTTPRequestHandler):
       continue
     comps.sort(key=lambda x:x["distance"])
     diagnostics["eligible_before_top_20"]=len(comps)
-    selected=comps[:20]
+    MAX_COMPARABLE_DISTANCE=0.55
+    selected=[x for x in comps if x["distance"] <= MAX_COMPARABLE_DISTANCE][:20]
+    diagnostics["distance_threshold"]=MAX_COMPARABLE_DISTANCE
+    diagnostics["rejected_by_distance"]=sum(1 for x in comps if x["distance"] > MAX_COMPARABLE_DISTANCE)
     if len(selected)>=3:
      weighted=[(item["value"],item["weight"]/(1.0+item["distance"])) for item in selected]
      weighted.sort(key=lambda x:x[0])
@@ -303,17 +308,17 @@ class Handler(BaseHTTPRequestHandler):
          "sale_count":sum(1 for x in selected if x["value"]==price)}
          for price in sorted({x["value"] for x in selected})],
        "diagnostics":{"target_stats":target,"target_heuristic_score":target_score,
-         "target_verdict":analysis["verdict"],"selection_method":"same FCR; weighted distance across union of target/comparable stats; missing stats treated as zero; heuristic-score gap penalty",
+         "target_verdict":analysis["verdict"],"selection_method":"same FCR; weighted stat distance; premium-affix mismatch penalty; heuristic-score gap penalty; max distance 0.55",
          "counts":diagnostics,"selected_comparables":[{"observation_id":x["observation_id"],
           "captured_at":x["captured_at"],"price_pskulls":x["value"],"price_display":format_pskull_value(x["value"]),
           "trade_text":x["trade_text"],"stats":x["stats"],"heuristic_score":x["heuristic_score"],
           "distance":round(x["distance"],4),"stat_distance":round(x["stat_distance"],4),
-          "score_gap":x["score_gap"],"shared_stats":x["shared_stats"],
+          "score_gap":x["score_gap"],"quality_gap":x["quality_gap"],"quality_penalty":x["quality_penalty"],"shared_stats":x["shared_stats"],
           "distance_components":x["distance_components"]} for x in selected],
          "next_closest_not_selected":[{"observation_id":x["observation_id"],"price_display":format_pskull_value(x["value"]),
           "stats":x["stats"],"heuristic_score":x["heuristic_score"],"distance":round(x["distance"],4)}
           for x in comps[20:25]]},
-       "note":"Completed-sale page records only. Similarity now penalizes missing stats and heuristic-score gaps; see diagnostics for every selected reference. 90% is a reliability weight, not a price discount."}
+       "note":"Completed-sale page records only. Comparables must pass a strict quality-aware distance threshold; premium-affix mismatches are penalized. 90% is a reliability weight, not a price discount."}
      valuation["comparables"]=[{"observation_id":x["observation_id"],"price_pskulls":x["value"],
         "price_display":format_pskull_value(x["value"]),"distance":round(x["distance"],4),
         "reliability":x["weight"],"trade_text":x["trade_text"],
@@ -324,7 +329,7 @@ class Handler(BaseHTTPRequestHandler):
        "diagnostics":{"target_stats":target,"target_heuristic_score":target_score,"counts":diagnostics,
         "eligible_comparables":[{"observation_id":x["observation_id"],"price_display":format_pskull_value(x["value"]),
          "stats":x["stats"],"heuristic_score":x["heuristic_score"],"distance":round(x["distance"],4)} for x in selected]},
-       "note":"At least 3 completed-sale Blood-ring records with known prices and matching FCR plus two shared stats are required."}
+       "note":"At least 3 completed-sale Blood-ring records with known prices, matching FCR, and quality-aware distance <= 0.55 are required. No price is forced when close matches are insufficient."}
     self._json(200,{"ok":True,"synthetic":bool(payload.get("synthetic",False)),
       "analysis":analysis,"valuation":valuation}); return
    if path=="/observations":
