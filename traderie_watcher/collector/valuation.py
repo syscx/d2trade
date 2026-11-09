@@ -2,7 +2,8 @@
 
 Configured rates supplied by the user:
 1 Ist = 15 Pskulls; 1 Jah = 15 Ist = 225 Pskulls.
-Unknown rune rates remain unknown rather than being guessed.
+1 Ber = 0.95 Jah; 1 Cham = 0.8 Jah.
+Other unknown rune rates remain unknown rather than being guessed.
 """
 from __future__ import annotations
 
@@ -10,6 +11,8 @@ IST_VALUE_PSKULLS = 15
 DEFAULT_RUNE_VALUES_PSKULLS = {
     "Ist": 15,
     "Jah": 225,
+    "Ber": 213.75,  # 0.95 Jah
+    "Cham": 180,    # 0.8 Jah
     "Perfect Skull": 1,
     "Pskull": 1,
     "Pskulls": 1,
