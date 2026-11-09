@@ -116,6 +116,13 @@ class Handler(BaseHTTPRequestHandler):
      kind=listing.get("record_type") or "missing"
      counts["record_types"][kind]=counts["record_types"].get(kind,0)+1
      is_sale=(kind=="completed_sale_observation" or listing.get("transaction_status")=="completed_sale_page_record")
+     if not is_sale and len(samples)<8:
+      samples.append({"observation_id":row["id"],"reason":"not_classified_as_sale",
+       "listing_key":row["listing_key"],"title":listing.get("title"),
+       "listing_fields":sorted(listing.keys()),
+       "record_type":listing.get("record_type"),
+       "transaction_status":listing.get("transaction_status"),
+       "visible_text":str(listing.get("visible_text") or "")[:1800]})
      if is_sale:
       counts["completed_sale_records"]+=1
       if row["craft_type"]!="blood_candidate": continue
