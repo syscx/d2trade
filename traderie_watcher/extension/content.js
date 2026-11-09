@@ -62,7 +62,7 @@
     return [...found];
   }
 
-  function getTradeSides(card) {
+  function getTradeSides(card, title) {
     const lines = (card.innerText || "")
       .split(/\r?\n/)
       .map(line => line.trim())
@@ -71,21 +71,24 @@
     const iIndex = lines.findIndex(line => /^i give$/i.test(line));
     const ageIndex = lines.findIndex(line => /^\d+\s+(?:seconds?|minutes?|hours?|days?|weeks?)\s+ago$/i.test(line));
 
-    const sliceSide = (start, end) => {
-      if (start < 0) return null;
-      return clean(lines.slice(start + 1, end > start ? end : lines.length)
-        .filter(line => !/^high rune value\s*:/i.test(line))
-        .join(" | ")) || null;
-    };
-
-    if (theyIndex >= 0 || iIndex >= 0) {
-      const end = ageIndex >= 0 ? ageIndex : lines.length;
-      return {
-        they_give_text: theyIndex >= 0 ? sliceSide(theyIndex, iIndex >= 0 ? iIndex : end) : null,
-        i_give_text: iIndex >= 0 ? sliceSide(iIndex, end) : null
-      };
+    if (theyIndex < 0 && iIndex < 0) {
+      return { they_give_text: null, i_give_text: null };
     }
-    return { they_give_text: null, i_give_text: null };
+
+    // On Traderie, the "They Give" side is represented by the listing title.
+    // Its following lines are game/ladder/platform metadata, not extra items.
+    const end = ageIndex >= 0 ? ageIndex : lines.length;
+    const giveLines = iIndex >= 0
+      ? lines.slice(iIndex + 1, end)
+      : [];
+    const cleanGive = giveLines
+      .filter(line => !/^high rune value\s*:/i.test(line))
+      .filter(line => !/^\d+\s+(?:seconds?|minutes?|hours?|days?|weeks?)\s+ago$/i.test(line));
+
+    return {
+      they_give_text: theyIndex >= 0 ? (title || null) : null,
+      i_give_text: iIndex >= 0 ? clean(cleanGive.join(" | ")) || null : null
+    };
   }
 
   function extractListing(card) {
@@ -109,7 +112,7 @@
       title = clean(link.innerText || link.textContent);
     }
 
-    const tradeSides = getTradeSides(card);
+    const tradeSides = getTradeSides(card, title);
     return {
       listing_key: href,
       listing_path: href,
