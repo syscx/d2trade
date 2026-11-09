@@ -18,6 +18,22 @@ ALLOWED_ORIGIN_PREFIX="chrome-extension://"
 def connect():
  db=sqlite3.connect(DB_PATH); db.row_factory=sqlite3.Row; return db
 
+def is_completed_sale_listing(listing):
+ # Current and legacy schema support. Legacy records are accepted only when
+ # the visible card has both completed-sale direction labels and no active ask label.
+ kind=listing.get("record_type") or listing.get("listing_type")
+ status=listing.get("transaction_status")
+ if kind=="completed_sale_observation" or status=="completed_sale_page_record":
+  return True
+ if kind or status:
+  return False
+ visible=str(listing.get("visible_text") or "")
+ has_sale_labels=bool(__import__("re").search(r"\\bThey\\s+Give\\b",visible,__import__("re").I)
+  and __import__("re").search(r"\\bI\\s+Give\\b",visible,__import__("re").I))
+ has_active_label=bool(__import__("re").search(r"\\bTrading\\s+For\\b",visible,__import__("re").I))
+ return has_sale_labels and not has_active_label
+
+
 def initialize():
  DB_PATH.parent.mkdir(parents=True,exist_ok=True)
  with connect() as db:
@@ -115,12 +131,12 @@ class Handler(BaseHTTPRequestHandler):
      payload=json.loads(row["payload_json"]); listing=payload.get("listing") or {}
      kind=listing.get("record_type") or "missing"
      counts["record_types"][kind]=counts["record_types"].get(kind,0)+1
-     is_sale=(kind=="completed_sale_observation" or listing.get("transaction_status")=="completed_sale_page_record")
+     is_sale=is_completed_sale_listing(listing)
      if not is_sale and len(samples)<8:
       samples.append({"observation_id":row["id"],"reason":"not_classified_as_sale",
        "listing_key":row["listing_key"],"title":listing.get("title"),
        "listing_fields":sorted(listing.keys()),
-       "record_type":listing.get("record_type"),
+       "record_type":listing.get("record_type"),"listing_type":listing.get("listing_type"),
        "transaction_status":listing.get("transaction_status"),
        "visible_text":str(listing.get("visible_text") or "")[:1800]})
      if is_sale:
@@ -203,7 +219,7 @@ class Handler(BaseHTTPRequestHandler):
      try:
       saved=json.loads(row["payload_json"])
       listing=saved.get("listing") or {}
-      if listing.get("record_type") != "completed_sale_observation": continue
+      if not is_completed_sale_listing(listing): continue
       # Repeated scans of one Traderie listing count once; keep its newest snapshot.
       listing_key=row["listing_key"] or str(row["id"])
       if listing_key in seen: continue
