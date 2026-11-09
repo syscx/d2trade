@@ -19,19 +19,12 @@ def connect():
  db=sqlite3.connect(DB_PATH); db.row_factory=sqlite3.Row; return db
 
 def is_completed_sale_listing(listing):
- # Current and legacy schema support. Legacy records are accepted only when
- # the visible card has both completed-sale direction labels and no active ask label.
- kind=listing.get("record_type") or listing.get("listing_type")
- status=listing.get("transaction_status")
- if kind=="completed_sale_observation" or status=="completed_sale_page_record":
-  return True
- if kind or status:
-  return False
- visible=str(listing.get("visible_text") or "")
- has_sale_labels=bool(__import__("re").search(r"\\bThey\\s+Give\\b",visible,__import__("re").I)
-  and __import__("re").search(r"\\bI\\s+Give\\b",visible,__import__("re").I))
- has_active_label=bool(__import__("re").search(r"\\bTrading\\s+For\\b",visible,__import__("re").I))
- return has_sale_labels and not has_active_label
+ # Never infer a completed transaction from barter_offer or the two trade-direction labels.
+ # Only explicit transaction-state metadata is accepted.
+ return (
+  listing.get("record_type") == "completed_sale_observation"
+  or listing.get("transaction_status") == "completed_sale_page_record"
+ )
 
 
 def initialize():
@@ -119,7 +112,7 @@ class Handler(BaseHTTPRequestHandler):
     total=db.execute("SELECT COUNT(*) FROM observations WHERE observation_type='listing_snapshot'").fetchone()[0]
     ring_total=db.execute("SELECT COUNT(*) FROM ring_analyses").fetchone()[0]
     blood_total=db.execute("SELECT COUNT(*) FROM ring_analyses WHERE craft_type='blood_candidate'").fetchone()[0]
-    rows=db.execute("""SELECT o.id,o.listing_key,o.payload_json,ra.stats_json,ra.craft_type
+    rows=db.execute("""SELECT o.id,o.listing_key,o.source_url,o.page_context_json,o.payload_json,ra.stats_json,ra.craft_type
       FROM observations o LEFT JOIN ring_analyses ra ON ra.observation_id=o.id
       WHERE o.observation_type='listing_snapshot' ORDER BY o.id DESC""").fetchall()
    counts={"listing_snapshots":total,"ring_analyses":ring_total,"blood_candidates":blood_total,
@@ -135,6 +128,7 @@ class Handler(BaseHTTPRequestHandler):
      if not is_sale and len(samples)<8:
       samples.append({"observation_id":row["id"],"reason":"not_classified_as_sale",
        "listing_key":row["listing_key"],"title":listing.get("title"),
+       "source_url":row["source_url"],"page_context":json.loads(row["page_context_json"] or "{}"),
        "listing_fields":sorted(listing.keys()),
        "record_type":listing.get("record_type"),"listing_type":listing.get("listing_type"),
        "transaction_status":listing.get("transaction_status"),
