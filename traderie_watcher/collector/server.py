@@ -11,7 +11,7 @@ import sqlite3
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urljoin
 
 from jewel_analysis import analyze_listing, comparable_offer_summary
 
@@ -112,7 +112,7 @@ class Handler(BaseHTTPRequestHandler):
                         results.append({
                             "observation_id": row["observation_id"],
                             "listing_title": row["listing_title"],
-                            "listing_url": row["listing_key"] or row["source_url"],
+                            "listing_url": urljoin(row["source_url"], row["listing_key"]) if row["listing_key"] else row["source_url"],
                             "captured_at": row["captured_at"],
                             "quality_hint": row["quality_hint"],
                             "stats": stats,
