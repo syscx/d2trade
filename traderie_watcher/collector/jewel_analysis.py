@@ -64,7 +64,7 @@ def analyze_listing(listing: dict[str,Any]) -> dict[str,Any] | None:
  extracted=extract_jewel_properties(str(listing.get("title") or ""),str(listing.get("visible_text") or ""))
  if extracted is None: return None
  trade=listing.get("observed_trade_text") or listing.get("i_give_text") or listing.get("asking_price_text")
- record_type=listing.get("record_type") or "completed_sale_observation"
+ record_type=listing.get("record_type") or "unknown_listing_record"
  is_sale=record_type=="completed_sale_observation"
  status="completed_sale_page_record" if is_sale else ("active_or_asking" if record_type=="active_listing_ask" else "unknown")
  note="Completed-sales page record; displayed trade terms may overstate the actual deal." if is_sale else ("Active listing asking terms; not a completed sale." if record_type=="active_listing_ask" else "Trade direction could not be identified.")
@@ -89,4 +89,4 @@ def comparable_offer_summary(db, stats: dict[str,int], exclude_observation_id: i
   if similarity>=0.55: candidates.append((similarity,row))
  candidates.sort(key=lambda x:x[0],reverse=True)
  offers=[{"observation_id":r["observation_id"],"similarity":round(sim,3),"requested_trade_text":r["requested_trade_text"],"displayed_asking_price":r["displayed_asking_price"]} for sim,r in candidates if r["requested_trade_text"] or r["displayed_asking_price"]]
- return {"matching_observation_count":len(candidates),"comparable_sale_observations":offers[:10],"price_estimate":None,"price_basis":"similar_completed_sale_page_records_only" if offers else "insufficient_comparables","warning":"Similarity is a rough stat filter. These are completed-sale page trade terms, but displayed values may overstate the true deal; not verified cash-equivalent fair value."}
+ return {"matching_observation_count":len(candidates),"comparable_sale_observations":offers[:10],"comparable_asking_offers":offers[:10],"price_estimate":None,"price_basis":"similar_completed_sale_page_records_only" if offers else "insufficient_comparables","warning":"Similarity is a rough stat filter. These are completed-sale page trade terms, but displayed values may overstate the true deal; not verified cash-equivalent fair value."}
