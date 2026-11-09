@@ -10,10 +10,10 @@ PATTERNS = {
  "strength":[r"[+]?(\d{1,2})\s+to\s+strength\b"],
  "dexterity":[r"[+]?(\d{1,2})\s+to\s+dexterity\b"],
  "all_resist":[r"[+]?(\d{1,2})\s+to\s+all\s+resistances?\b"],
- "fire_resist":[r"[+]?(\d{1,2})\s*%?\s*fire\s+resist"],
- "cold_resist":[r"[+]?(\d{1,2})\s*%?\s*cold\s+resist"],
- "lightning_resist":[r"[+]?(\d{1,2})\s*%?\s*lightning\s+resist"],
- "poison_resist":[r"[+]?(\d{1,2})\s*%?\s*poison\s+resist"],
+ "fire_resist":[r"[+]?(\d{1,2})\s*%?\s*(?:to\s+)?fire\s+resist"],
+ "cold_resist":[r"[+]?(\d{1,2})\s*%?\s*(?:to\s+)?cold\s+resist"],
+ "lightning_resist":[r"[+]?(\d{1,2})\s*%?\s*(?:to\s+)?lightning\s+resist"],
+ "poison_resist":[r"[+]?(\d{1,2})\s*%?\s*(?:to\s+)?poison\s+resist"],
  "mana":[r"[+]?(\d{1,3})\s+to\s+mana\b"],
  "attack_rating":[r"[+]?(\d{1,3})\s+to\s+attack\s+rating\b"],
  "life_replenish":[r"replenish\s+life\s*\+?\s*(\d{1,2})",r"\+(\d{1,2})\s+replenish\s+life"],
@@ -30,7 +30,7 @@ def extract_ring_properties(title: str, visible_text: str) -> dict[str,Any] | No
     stats[key]=int(m.group(1)); break
  # Blood-crafted rings have guaranteed life leech; treat as a candidate, not proof.
  blood_candidate=stats.get("life_leech",0)>0
- fcr=stats.get("fcr",0)
+ fcr=stats.get("fcr")
  score=0; reasons=[]
  if fcr == 10: score+=4; reasons.append("10% FCR: valid maximum Blood-ring FCR roll")
  elif fcr is not None: reasons.append(f"Invalid Blood-ring FCR value detected ({fcr}%); verify OCR or item classification")
