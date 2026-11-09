@@ -64,7 +64,7 @@ def analyze_listing(listing: dict[str,Any]) -> dict[str,Any] | None:
  extracted=extract_jewel_properties(str(listing.get("title") or ""),str(listing.get("visible_text") or ""))
  if extracted is None: return None
  trade=listing.get("i_give_text"); asking=listing.get("asking_price_text")
- return {**extracted,"trade_observation":{"displayed_asking_price":None,"observed_trade_text":trade or None,"observed_runes":parse_rune_request(trade),"price_kind":"not_observed","transaction_status":"unknown","is_confirmed_sale":False,"numeric_estimate":None,"note":"Visible trade-side text only; asking price and completed-sale status are not established by the extension."},"recommendation":recommend_jewel(extracted["stats"])}
+ return {**extracted,"trade_observation":{"displayed_asking_price":None,"observed_trade_text":trade or None,"observed_runes":parse_rune_request(trade),"price_kind":"observed_completed_sale_trade_terms","transaction_status":"completed_sale_page_record","is_confirmed_sale":True,"sale_price_reliability":"uncertain_possible_overstatement","numeric_estimate":None,"note":"Captured from Traderie completed-sales page; trade terms are evidence of a completed-sale record, but displayed value may overstate the actual deal."},"recommendation":recommend_jewel(extracted["stats"])}
 
 def stat_similarity(left: dict[str,int], right: dict[str,int]) -> float:
  shared=set(left)&set(right)
@@ -85,4 +85,4 @@ def comparable_offer_summary(db, stats: dict[str,int], exclude_observation_id: i
   if similarity>=0.55: candidates.append((similarity,row))
  candidates.sort(key=lambda x:x[0],reverse=True)
  offers=[{"observation_id":r["observation_id"],"similarity":round(sim,3),"requested_trade_text":r["requested_trade_text"],"displayed_asking_price":r["displayed_asking_price"]} for sim,r in candidates if r["requested_trade_text"] or r["displayed_asking_price"]]
- return {"matching_observation_count":len(candidates),"comparable_asking_offers":offers[:10],"price_estimate":None,"price_basis":"similar_listing_asks_only" if offers else "insufficient_comparables","warning":"Similarity is a rough stat filter. These are seller asks/trade requests, not verified sales or fair value."}
+ return {"matching_observation_count":len(candidates),"comparable_sale_observations":offers[:10],"price_estimate":None,"price_basis":"similar_completed_sale_page_records_only" if offers else "insufficient_comparables","warning":"Similarity is a rough stat filter. These are completed-sale page trade terms, but displayed values may overstate the true deal; not verified cash-equivalent fair value."}
