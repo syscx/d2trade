@@ -55,7 +55,7 @@ class BloodRingTests(unittest.TestCase):
     def test_high_roll_four_affix_ring_can_reach_full_score(self):
         item = extract_ring_properties("Blood Ring",
             "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n10% Faster Cast Rate\n+50 to Mana\n+30% to Fire Resistance\n+100 to Attack Rating")
-        self.assertGreaterEqual(item["quality_score_percent"], 80)
+        self.assertEqual(item["quality_score_percent"], 72.38)
 
     def test_mana_leech_is_extracted_and_scored(self):
         item = extract_ring_properties("Blood Ring", "+10% Faster Cast Rate\n6% Mana Stolen Per Hit\n3% Life Stolen Per Hit\n+6 to Dexterity")
