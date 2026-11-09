@@ -1,6 +1,7 @@
 """Loopback-only passive Traderie collector and local market-learning API."""
 from __future__ import annotations
 import json, os, sqlite3
+from statistics import median
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -138,6 +139,43 @@ class Handler(BaseHTTPRequestHandler):
   path=urlparse(self.path).path
   try:
    payload=self._body()
+   if path=="/analyze/ring":
+    title=str(payload.get("title") or "Blood Ring (SYNTHETIC TEST DATA)")[:300]
+    visible=str(payload.get("visible_text") or "")[:4000]
+    if not visible.strip(): raise ValueError("visible_text is required")
+    analysis=extract_ring_properties(title,visible)
+    if not analysis: raise ValueError("input does not look like a ring")
+    # Numeric values are based only on manually verified sales linked to analyzed Blood rings.
+    with connect() as db:
+     rows=db.execute("""SELECT vs.sale_value_pskulls,ra.stats_json
+       FROM verified_sales vs JOIN ring_analyses ra ON ra.observation_id=vs.observation_id
+       WHERE vs.verified=1 AND vs.sale_value_pskulls IS NOT NULL
+       AND ra.craft_type='blood_candidate' ORDER BY vs.sold_at DESC""").fetchall()
+    target=analysis["stats"]
+    comps=[]
+    for row in rows:
+     other=json.loads(row["stats_json"])
+     if other.get("fcr") != target.get("fcr"): continue
+     shared=set(target).intersection(other)
+     if len(shared)<2: continue
+     distance=sum(abs(float(target[k])-float(other[k])) /
+       max(abs(float(target[k])),abs(float(other[k])),10) for k in shared)
+     comps.append((distance,float(row["sale_value_pskulls"])))
+    comps.sort(key=lambda x:x[0])
+    selected=comps[:10]
+    if len(selected)>=3:
+     values=sorted(x[1] for x in selected)
+     valuation={"status":"estimate_available","currency":"Pskulls",
+       "low":values[int((len(values)-1)*0.25)],"median":median(values),
+       "high":values[int((len(values)-1)*0.75)],
+       "comparable_verified_sales":len(selected),
+       "note":"Rough range from manually verified Blood-ring sales with matching FCR."}
+    else:
+     valuation={"status":"insufficient_data","currency":"Pskulls",
+       "low":None,"median":None,"high":None,"comparable_verified_sales":len(selected),
+       "note":"At least 3 comparable manually verified Blood-ring sales are required. No price is guessed."}
+    self._json(200,{"ok":True,"synthetic":bool(payload.get("synthetic",False)),
+      "analysis":analysis,"valuation":valuation}); return
    if path=="/observations":
     origin=self.headers.get("Origin","")
     if not origin.startswith(ALLOWED_ORIGIN_PREFIX): self._json(403,{"error":"extension origin required"}); return
