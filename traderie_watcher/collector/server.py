@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urljoin
 from jewel_analysis import analyze_listing, comparable_offer_summary, parse_rune_request
-from ring_analysis import extract_ring_properties
+from ring_analysis import extract_ring_properties, score_ring_stats
 from valuation import rune_bundle_value_pskulls, format_pskull_value
 
 ROOT=Path(__file__).resolve().parent
@@ -216,41 +216,69 @@ class Handler(BaseHTTPRequestHandler):
        WHERE o.observation_type='listing_snapshot' AND ra.craft_type='blood_candidate'
        ORDER BY o.captured_at DESC,o.id DESC""").fetchall()
     target=analysis["stats"]
+    target_score=analysis["heuristic_score"]
     seen=set()
     comps=[]
+    diagnostics={"listing_snapshots_scanned":len(rows),"completed_sales":0,"duplicate_listings_skipped":0,
+      "non_completed_sales_skipped":0,"non_blood_rings_skipped":0,"unknown_or_unparsed_prices":0,
+      "fcr_mismatch":0,"insufficient_stat_overlap":0,"eligible_before_top_20":0}
     for row in rows:
      try:
       saved=json.loads(row["payload_json"])
       listing=saved.get("listing") or {}
-      if not is_completed_sale_listing(listing): continue
-      # Repeated scans of one Traderie listing count once; keep its newest snapshot.
+      if not is_completed_sale_listing(listing):
+       diagnostics["non_completed_sales_skipped"]+=1
+       continue
+      diagnostics["completed_sales"]+=1
       listing_key=row["listing_key"] or str(row["id"])
-      if listing_key in seen: continue
+      if listing_key in seen:
+       diagnostics["duplicate_listings_skipped"]+=1
+       continue
       seen.add(listing_key)
+      if row["craft_type"]!="blood_candidate":
+       diagnostics["non_blood_rings_skipped"]+=1
+       continue
       trade_text=(listing.get("i_give_text") or listing.get("observed_trade_text") or "").strip()
       runes=parse_rune_request(trade_text)
       price=rune_bundle_value_pskulls(runes)
-      if price["value_pskulls"] is None: continue
+      if price["value_pskulls"] is None:
+       diagnostics["unknown_or_unparsed_prices"]+=1
+       continue
       other=json.loads(row["stats_json"])
-      if other.get("fcr") != target.get("fcr"): continue
+      if other.get("fcr") != target.get("fcr"):
+       diagnostics["fcr_mismatch"]+=1
+       continue
       shared=set(target).intersection(other)
-      if len(shared)<2: continue
-      distance=sum(abs(float(target[k])-float(other[k])) /
-       max(abs(float(target[k])),abs(float(other[k])),10) for k in shared)/len(shared)
-      # 0.90 expresses the user's estimated reliability of completed-sale cards.
-      comps.append({"distance":distance,"value":float(price["value_pskulls"]),
-       "weight":0.90,"observation_id":row["id"],"trade_text":trade_text,
-       "listing_key":listing_key,"captured_at":row["captured_at"]})
+      if len(shared)<2:
+       diagnostics["insufficient_stat_overlap"]+=1
+       continue
+      # Compare the union, not just shared stats: missing premium stats count as zero.
+      # This prevents a weak target from matching only on its few overlapping stats.
+      union=set(target).union(other)
+      stat_weights={"fcr":2.0,"life_leech":1.0,"life":1.5,"strength":1.2,"dexterity":1.2,
+        "attack_rating":1.0,"all_resist":1.0,"fire_resist":0.8,"cold_resist":0.8,
+        "lightning_resist":0.8,"poison_resist":0.8,"mana":0.7,"magic_find":0.5,"gold_find":0.25}
+      distance_parts={}
+      for key in union:
+       a=float(target.get(key,0)); b=float(other.get(key,0))
+       scale=max(abs(a),abs(b),10.0)
+       distance_parts[key]=round(abs(a-b)/scale*stat_weights.get(key,1.0),4)
+      stat_distance=sum(distance_parts.values())/max(sum(stat_weights.get(k,1.0) for k in union),1.0)
+      other_score,_=score_ring_stats(other)
+      score_gap=abs(target_score-other_score)
+      distance=stat_distance+(score_gap/10.0)*0.75
+      comps.append({"distance":distance,"stat_distance":stat_distance,"score_gap":score_gap,
+       "value":float(price["value_pskulls"]),"weight":0.90,"observation_id":row["id"],
+       "trade_text":trade_text,"listing_key":listing_key,"captured_at":row["captured_at"],
+       "stats":other,"heuristic_score":other_score,"shared_stats":sorted(shared),
+       "distance_components":distance_parts})
      except (ValueError,TypeError,KeyError,json.JSONDecodeError):
       continue
     comps.sort(key=lambda x:x["distance"])
+    diagnostics["eligible_before_top_20"]=len(comps)
     selected=comps[:20]
     if len(selected)>=3:
-     # Weighted quantiles. Equal default reliability weights preserve the observed
-     # market distribution; distance weighting favors closer stat matches.
-     weighted=[]
-     for item in selected:
-      weighted.append((item["value"],item["weight"]/(1.0+item["distance"])))
+     weighted=[(item["value"],item["weight"]/(1.0+item["distance"])) for item in selected]
      weighted.sort(key=lambda x:x[0])
      total_weight=sum(w for _,w in weighted)
      def weighted_quantile(q):
@@ -260,28 +288,38 @@ class Handler(BaseHTTPRequestHandler):
        running+=weight
        if running>=threshold: return value
       return weighted[-1][0]
+     low=weighted_quantile(0.25); med=weighted_quantile(0.50); high=weighted_quantile(0.75)
      valuation={"status":"estimate_available","currency":"Pskulls",
-       "low":weighted_quantile(0.25),"median":weighted_quantile(0.50),
-       "high":weighted_quantile(0.75),
-       "display":{"low":format_pskull_value(weighted_quantile(0.25)),
-        "median":format_pskull_value(weighted_quantile(0.50)),
-        "high":format_pskull_value(weighted_quantile(0.75))},
-       "comparable_sales":len(selected),"reliability_weight":0.90,
-       "effective_weight":round(total_weight,3),
+       "low":low,"median":med,"high":high,
+       "display":{"low":format_pskull_value(low),"median":format_pskull_value(med),"high":format_pskull_value(high)},
+       "comparable_sales":len(selected),"eligible_comparable_sales":len(comps),
+       "reliability_weight":0.90,"effective_weight":round(total_weight,3),
        "price_distribution":[{"price_pskulls":price,"price_display":format_pskull_value(price),
          "sale_count":sum(1 for x in selected if x["value"]==price)}
          for price in sorted({x["value"] for x in selected})],
-       "note":"Automatic estimate from completed-sale page records; 90% default reliability weight. Values are normalized to Pskulls. Displayed sale terms may still be noisy.",
-       "comparables":[{"observation_id":x["observation_id"],"price_pskulls":x["value"],
-        "price_display":format_pskull_value(x["value"]),
-        "distance":round(x["distance"],3),"reliability":x["weight"],
-        "trade_text":x["trade_text"]} for x in selected]}
+       "diagnostics":{"target_stats":target,"target_heuristic_score":target_score,
+         "target_verdict":analysis["verdict"],"selection_method":"same FCR; weighted distance across union of target/comparable stats; missing stats treated as zero; heuristic-score gap penalty",
+         "counts":diagnostics,"selected_comparables":[{"observation_id":x["observation_id"],
+          "captured_at":x["captured_at"],"price_pskulls":x["value"],"price_display":format_pskull_value(x["value"]),
+          "trade_text":x["trade_text"],"stats":x["stats"],"heuristic_score":x["heuristic_score"],
+          "distance":round(x["distance"],4),"stat_distance":round(x["stat_distance"],4),
+          "score_gap":x["score_gap"],"shared_stats":x["shared_stats"],
+          "distance_components":x["distance_components"]} for x in selected],
+         "next_closest_not_selected":[{"observation_id":x["observation_id"],"price_display":format_pskull_value(x["value"]),
+          "stats":x["stats"],"heuristic_score":x["heuristic_score"],"distance":round(x["distance"],4)}
+          for x in comps[20:25]]},
+       "note":"Completed-sale page records only. Similarity now penalizes missing stats and heuristic-score gaps; see diagnostics for every selected reference. 90% is a reliability weight, not a price discount."}
+     valuation["comparables"]=[{"observation_id":x["observation_id"],"price_pskulls":x["value"],
+        "price_display":format_pskull_value(x["value"]),"distance":round(x["distance"],4),
+        "reliability":x["weight"],"trade_text":x["trade_text"],
+        "stats":x["stats"],"heuristic_score":x["heuristic_score"]} for x in selected]
     else:
-     valuation={"status":"insufficient_data","currency":"Pskulls",
-       "low":None,"median":None,"high":None,"comparable_sales":len(selected),
-       "reliability_weight":0.90,
-       "note":"At least 3 automatically collected completed-sale Blood-ring records with known Ist/Jah/Pskull values and matching FCR plus two shared stats are required.",
-       "comparables":[]}
+     valuation={"status":"insufficient_data","currency":"Pskulls","low":None,"median":None,"high":None,
+       "comparable_sales":len(selected),"eligible_comparable_sales":len(comps),"reliability_weight":0.90,
+       "diagnostics":{"target_stats":target,"target_heuristic_score":target_score,"counts":diagnostics,
+        "eligible_comparables":[{"observation_id":x["observation_id"],"price_display":format_pskull_value(x["value"]),
+         "stats":x["stats"],"heuristic_score":x["heuristic_score"],"distance":round(x["distance"],4)} for x in selected]},
+       "note":"At least 3 completed-sale Blood-ring records with known prices and matching FCR plus two shared stats are required."}
     self._json(200,{"ok":True,"synthetic":bool(payload.get("synthetic",False)),
       "analysis":analysis,"valuation":valuation}); return
    if path=="/observations":
