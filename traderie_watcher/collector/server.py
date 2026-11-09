@@ -218,7 +218,7 @@ class Handler(BaseHTTPRequestHandler):
     with connect() as db:
      rows=db.execute("""SELECT o.id,o.listing_key,o.payload_json,o.captured_at,ra.stats_json
        FROM observations o JOIN ring_analyses ra ON ra.observation_id=o.id
-       WHERE o.observation_type='listing_snapshot' AND ra.craft_type='blood_candidate'
+       WHERE o.observation_type='listing_snapshot'
        ORDER BY o.captured_at DESC,o.id DESC""").fetchall()
     target=analysis["stats"]
     target_score=analysis["heuristic_score"]
