@@ -15,7 +15,6 @@ PREFIX_AFFIXES = [
     ("lightning_resist", lambda r: f"+{r.randint(1, 30)}% to Lightning Resistance"),
     ("poison_resist", lambda r: f"+{r.randint(1, 30)}% to Poison Resistance"),
     ("attack_rating", lambda r: f"+{r.randint(1, 100)} to Attack Rating"),
-    ("dexterity", lambda r: f"+{r.randint(1, 15)} to Dexterity"),
 ]
 SUFFIX_AFFIXES = [
     ("fcr", lambda r: "10% Faster Cast Rate"),
@@ -23,6 +22,7 @@ SUFFIX_AFFIXES = [
     ("magic_find", lambda r: f"{r.randint(1, 25)}% Better Chance of Getting Magic Items"),
     ("gold_find", lambda r: f"{r.randint(1, 100)}% Extra Gold from Monsters"),
     ("life_replenish", lambda r: f"Replenish Life +{r.randint(1, 5)}"),
+    ("dexterity", lambda r: f"+{r.randint(1, 15)} to Dexterity"),
 ]
 
 def generate(seed=None, affix_count=None):
