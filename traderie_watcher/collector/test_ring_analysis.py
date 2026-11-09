@@ -45,7 +45,7 @@ class BloodRingTests(unittest.TestCase):
 
     def test_user_example_ring_has_four_affixes_and_poor_combo(self):
         item = extract_ring_properties("Blood Ring",
-            "1% Life Stolen Per Hit\\n+10 to Life\\n+1 to Strength\\n10% Faster Cast Rate\\n+18 to Mana\\n+13% to Fire Resistance\\n+3 to Attack Rating")
+            "1% Life Stolen Per Hit\n+10 to Life\n+1 to Strength\n10% Faster Cast Rate\n+18 to Mana\n+13% to Fire Resistance\n+3 to Attack Rating")
         self.assertEqual(item["random_affix_count"], 4)
         self.assertTrue(item["poor_stat_combination"])
         self.assertLess(item["quality_score_percent"], 90)
@@ -54,11 +54,11 @@ class BloodRingTests(unittest.TestCase):
 
     def test_high_roll_four_affix_ring_can_reach_full_score(self):
         item = extract_ring_properties("Blood Ring",
-            "3% Life Stolen Per Hit\\n+20 to Life\\n+5 to Strength\\n10% Faster Cast Rate\\n+50 to Mana\\n+30% to Fire Resistance\\n+100 to Attack Rating")
+            "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n10% Faster Cast Rate\n+50 to Mana\n+30% to Fire Resistance\n+100 to Attack Rating")
         self.assertGreaterEqual(item["quality_score_percent"], 80)
 
     def test_mana_leech_is_extracted_and_scored(self):
-        item = extract_ring_properties("Blood Ring", "+10% Faster Cast Rate\\n6% Mana Stolen Per Hit\\n3% Life Stolen Per Hit\\n+6 to Dexterity")
+        item = extract_ring_properties("Blood Ring", "+10% Faster Cast Rate\n6% Mana Stolen Per Hit\n3% Life Stolen Per Hit\n+6 to Dexterity")
         self.assertEqual(item["stats"]["mana_leech"], 6)
         self.assertEqual(item["stats"]["life_leech"], 3)
         self.assertGreater(score_ring_stats(item["stats"])[0], 0)
@@ -116,7 +116,7 @@ class BloodRingTests(unittest.TestCase):
 
     def test_dexterity_magic_find_and_gold_find_are_parsed(self):
         item = extract_ring_properties("Rare Ring",
-            "+12 to Dexterity\\n25% Better Chance of Getting Magic Items\\n80% Extra Gold from Monsters")
+            "+12 to Dexterity\n25% Better Chance of Getting Magic Items\n80% Extra Gold from Monsters")
         self.assertEqual(item["stats"]["dexterity"], 12)
         self.assertEqual(item["stats"]["magic_find"], 25)
         self.assertEqual(item["stats"]["gold_find"], 80)
