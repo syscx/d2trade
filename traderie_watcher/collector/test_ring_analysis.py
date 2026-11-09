@@ -18,4 +18,15 @@ class BloodRingTests(unittest.TestCase):
  def test_non_ring_is_ignored(self):
   self.assertIsNone(extract_ring_properties('Jah Rune','10% Faster Cast Rate'))
 
+
+    def test_synthetic_generator_uses_at_most_four_random_affixes(self):
+        from generate_test_blood_ring import generate
+        for seed in range(100):
+            item = generate(seed)
+            self.assertGreaterEqual(item["random_affix_count"], 1)
+            self.assertLessEqual(item["random_affix_count"], 4)
+            self.assertEqual(item["random_affix_count"], len(item["random_affixes"]))
+            self.assertEqual(len(item["random_affixes"]), len(set(item["random_affixes"])))
+            self.assertEqual(item["visible_text"].count("\\\\n"), 3 + item["random_affix_count"])
+
 if __name__=='__main__': unittest.main()
