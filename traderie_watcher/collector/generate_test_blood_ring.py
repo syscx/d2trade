@@ -47,7 +47,7 @@ def generate(seed=None, affix_count=None):
     for _,_,maker in selected:
         lines.append(maker(rng))
     return {"synthetic":True,"title":"Blood Ring (SYNTHETIC TEST DATA)",
-        "visible_text":"\\n".join(lines),"fixed_mods":fixed,
+        "visible_text":"\n".join(lines),"fixed_mods":fixed,
         "fixed_mods_present":sorted(fixed),"random_affix_count":count,
         "random_affixes":[key for _,key,_ in selected],
         "prefix_count":prefix_count,"suffix_count":suffix_count,
