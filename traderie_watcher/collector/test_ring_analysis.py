@@ -32,6 +32,20 @@ class BloodRingTests(unittest.TestCase):
             self.assertEqual(len(item["random_affixes"]), len(set(item["random_affixes"])))
             self.assertEqual(len(item["visible_text"].splitlines()), 4 + item["random_affix_count"])
 
+    def test_mana_leech_is_extracted_and_scored(self):
+        item = extract_ring_properties("Blood Ring", "+10% Faster Cast Rate\\n6% Mana Stolen Per Hit\\n3% Life Stolen Per Hit\\n+6 to Dexterity")
+        self.assertEqual(item["stats"]["mana_leech"], 6)
+        self.assertGreaterEqual(score_ring_stats(item["stats"])[0], 7)
+
+    def test_premium_affix_mismatch_is_explicit(self):
+        from ring_analysis import ring_quality_gap
+        target = {"fcr": 10, "attack_rating": 3, "fire_resist": 13, "mana": 18}
+        observation_106 = {"fcr": 10, "mana_leech": 6, "life_leech": 3, "strength": 3, "dexterity": 6, "life": 15, "mana": 18}
+        gap = ring_quality_gap(target, observation_106)
+        self.assertEqual(gap["missing_from_target"], ["dexterity", "life", "life_leech", "mana_leech"])
+        self.assertEqual(gap["mismatch_count"], 4)
+        self.assertEqual(gap["penalty"], 0.48)
+
     def test_reduced_life_leech_weight(self):
         score, reasons = score_ring_stats({"life_leech": 3})
         self.assertEqual(score, 1)
