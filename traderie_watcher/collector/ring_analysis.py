@@ -32,8 +32,8 @@ def extract_ring_properties(title: str, visible_text: str) -> dict[str,Any] | No
  blood_candidate=stats.get("life_leech",0)>0
  fcr=stats.get("fcr",0)
  score=0; reasons=[]
- if fcr>=10: score+=4; reasons.append("10% FCR is the maximum ring FCR roll")
- elif fcr: score+=2; reasons.append(f"{fcr}% FCR is a useful caster-ring modifier")
+ if fcr == 10: score+=4; reasons.append("10% FCR: valid maximum Blood-ring FCR roll")
+ elif fcr is not None: reasons.append(f"Invalid Blood-ring FCR value detected ({fcr}%); verify OCR or item classification")
  if stats.get("life_leech",0): score+=2; reasons.append("Life leech is consistent with a Blood-crafted ring")
  for key,threshold,label in [("life",40,"Life"),("strength",10,"Strength"),("all_resist",10,"All Resistances"),("mana",50,"Mana"),("attack_rating",100,"Attack Rating")]:
   value=stats.get(key,0)
@@ -44,4 +44,5 @@ def extract_ring_properties(title: str, visible_text: str) -> dict[str,Any] | No
  if score>=6: verdict="strong candidate; compare with similar FCR blood rings"
  elif score>=3: verdict="useful ring; value depends on caster build and other affixes"
  else: verdict="limited recognized premium stats; manual review"
- return {"item_type":"ring","craft_type":"blood_candidate" if blood_candidate else "unknown_or_other","stats":stats,"heuristic_score":score,"verdict":verdict,"reasons":reasons,"confidence":"low","raw_text":raw[:4000],"extraction_version":1}
+ valid_blood_fcr = fcr is None or fcr == 10
+ return {"item_type":"ring","craft_type":"blood_candidate" if blood_candidate and valid_blood_fcr else "unknown_or_other","stats":stats,"heuristic_score":score,"verdict":verdict,"reasons":reasons,"confidence":"low","fcr_valid_for_blood_ring":valid_blood_fcr,"raw_text":raw[:4000],"extraction_version":2}
