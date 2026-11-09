@@ -18,7 +18,7 @@
   let scanTimer = null;
   let lastPageContext = "";
 
-  const clean = value => (value || "").replace(/\\s+/g, " ").trim().slice(0, MAX_TEXT_LENGTH);
+  const clean = value => (value || "").replace(/\s+/g, " ").trim().slice(0, MAX_TEXT_LENGTH);
 
   const isVisible = element => {
     if (!(element instanceof Element)) return false;
@@ -37,7 +37,7 @@
       'input[type="search"], input[placeholder*="Search" i], input[aria-label*="Search" i]'
     );
     return {
-      page_type: /\\/items?\\//i.test(location.pathname) ? "item_or_listing" :
+      page_type: /\/items?\//i.test(location.pathname) ? "item_or_listing" :
         (params.size ? "search_or_filtered" : "traderie_page"),
       pathname: location.pathname,
       query: clean(params.toString()),
@@ -64,17 +64,17 @@
 
   function getTradeSides(card) {
     const lines = (card.innerText || "")
-      .split(/\\r?\\n/)
+      .split(/\r?\n/)
       .map(line => line.trim())
       .filter(Boolean);
     const theyIndex = lines.findIndex(line => /^they give$/i.test(line));
     const iIndex = lines.findIndex(line => /^i give$/i.test(line));
-    const ageIndex = lines.findIndex(line => /^\\d+\\s+(?:seconds?|minutes?|hours?|days?|weeks?)\\s+ago$/i.test(line));
+    const ageIndex = lines.findIndex(line => /^\d+\s+(?:seconds?|minutes?|hours?|days?|weeks?)\s+ago$/i.test(line));
 
     const sliceSide = (start, end) => {
       if (start < 0) return null;
       return clean(lines.slice(start + 1, end > start ? end : lines.length)
-        .filter(line => !/^high rune value\\s*:/i.test(line))
+        .filter(line => !/^high rune value\s*:/i.test(line))
         .join(" | ")) || null;
     };
 
