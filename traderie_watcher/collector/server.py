@@ -329,7 +329,12 @@ class Handler(BaseHTTPRequestHandler):
        "comparable_sales":len(selected),"eligible_comparable_sales":len(comps),"reliability_weight":0.90,
        "diagnostics":{"target_stats":target,"target_heuristic_score":target_score,"counts":diagnostics,
         "eligible_comparables":[{"observation_id":x["observation_id"],"price_display":format_pskull_value(x["value"]),
-         "stats":x["stats"],"heuristic_score":x["heuristic_score"],"distance":round(x["distance"],4)} for x in selected]},
+         "stats":x["stats"],"heuristic_score":x["heuristic_score"],"distance":round(x["distance"],4)} for x in selected],
+        "closest_candidates":[{"observation_id":x["observation_id"],"price_display":format_pskull_value(x["value"]),
+         "stats":x["stats"],"heuristic_score":x["heuristic_score"],"distance":round(x["distance"],4),
+         "stat_distance":round(x["stat_distance"],4),"score_gap":x["score_gap"],
+         "quality_gap":x["quality_gap"],"quality_penalty":x["quality_penalty"],
+         "distance_components":x["distance_components"]} for x in comps[:25]]},
        "note":"At least 3 completed-sale Blood-ring records with known prices, matching FCR, and quality-aware distance <= 0.55 are required. No price is forced when close matches are insufficient."}
     self._json(200,{"ok":True,"synthetic":bool(payload.get("synthetic",False)),
       "analysis":analysis,"valuation":valuation}); return
