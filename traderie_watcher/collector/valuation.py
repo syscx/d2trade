@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 
 IST_VALUE_PSKULLS = 15
-DEFAULT_RUNE_VALUES_PSKULLS = {"Ist": IST_VALUE_PSKULLS}
+DEFAULT_RUNE_VALUES_PSKULLS = {"Ist": IST_VALUE_PSKULLS, "Perfect Skull": 1, "Pskull": 1, "Pskulls": 1}
 
 def normalize_rune_name(name: str) -> str:
  return name.strip().title()
