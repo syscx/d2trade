@@ -268,11 +268,14 @@ class Handler(BaseHTTPRequestHandler):
         "high":format_pskull_value(weighted_quantile(0.75))},
        "comparable_sales":len(selected),"reliability_weight":0.90,
        "effective_weight":round(total_weight,3),
+       "price_distribution":[{"price_pskulls":price,"price_display":format_pskull_value(price),
+         "sale_count":sum(1 for x in selected if x["value"]==price)}
+         for price in sorted({x["value"] for x in selected})],
        "note":"Automatic estimate from completed-sale page records; 90% default reliability weight. Values are normalized to Pskulls. Displayed sale terms may still be noisy.",
        "comparables":[{"observation_id":x["observation_id"],"price_pskulls":x["value"],
         "price_display":format_pskull_value(x["value"]),
         "distance":round(x["distance"],3),"reliability":x["weight"],
-        "trade_text":x["trade_text"]} for x in selected[:10]]}
+        "trade_text":x["trade_text"]} for x in selected]}
     else:
      valuation={"status":"insufficient_data","currency":"Pskulls",
        "low":None,"median":None,"high":None,"comparable_sales":len(selected),
