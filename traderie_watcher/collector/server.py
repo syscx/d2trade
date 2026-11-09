@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urljoin
 from jewel_analysis import analyze_listing, comparable_offer_summary, parse_rune_request
 from ring_analysis import extract_ring_properties
-from valuation import rune_bundle_value_pskulls
+from valuation import rune_bundle_value_pskulls, format_pskull_value
 
 ROOT=Path(__file__).resolve().parent
 DB_PATH=Path(os.environ.get("TRADERIE_WATCHER_DB",ROOT/"traderie_observations.sqlite3"))
@@ -263,10 +263,14 @@ class Handler(BaseHTTPRequestHandler):
      valuation={"status":"estimate_available","currency":"Pskulls",
        "low":weighted_quantile(0.25),"median":weighted_quantile(0.50),
        "high":weighted_quantile(0.75),
+       "display":{"low":format_pskull_value(weighted_quantile(0.25)),
+        "median":format_pskull_value(weighted_quantile(0.50)),
+        "high":format_pskull_value(weighted_quantile(0.75))},
        "comparable_sales":len(selected),"reliability_weight":0.90,
        "effective_weight":round(total_weight,3),
        "note":"Automatic estimate from completed-sale page records; 90% default reliability weight. Values are normalized to Pskulls. Displayed sale terms may still be noisy.",
        "comparables":[{"observation_id":x["observation_id"],"price_pskulls":x["value"],
+        "price_display":format_pskull_value(x["value"]),
         "distance":round(x["distance"],3),"reliability":x["weight"],
         "trade_text":x["trade_text"]} for x in selected[:10]]}
     else:
