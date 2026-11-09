@@ -23,10 +23,10 @@ def normalize_rune_name(name: str) -> str:
 
 
 def format_pskull_value(value: float | int | None) -> str | None:
-    """Format values above 2 Ist as whole Ist plus the Pskull remainder.
+    """Format small values in Pskulls and large values as Ist + Pskull remainder.
 
-    Example: 39 Pskulls -> "2 Ist + 9 Pskulls". Values at or below
-    2 Ist retain the compact Pskull/Ist representation.
+    Up to 2 Ist, exact Ist multiples retain the legacy two-decimal display;
+    non-multiples stay in Pskulls. Above 2 Ist, use whole Ist plus remainder.
     """
     if value is None:
         return None
@@ -39,8 +39,8 @@ def format_pskull_value(value: float | int | None) -> str | None:
         if remainder == 0:
             return f"{whole_ist} Ist"
         return f"{whole_ist} Ist + {remainder:g} Pskulls"
-    if amount >= IST_VALUE_PSKULLS:
-        return f"{amount / IST_VALUE_PSKULLS:g} Ist"
+    if amount >= IST_VALUE_PSKULLS and amount % IST_VALUE_PSKULLS == 0:
+        return f"{amount / IST_VALUE_PSKULLS:.2f} Ist"
     return f"{amount:g} Pskulls"
 
 def rune_bundle_value_pskulls(runes: list[dict], rates: dict[str, float] | None = None) -> dict:
