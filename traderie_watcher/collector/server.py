@@ -98,6 +98,42 @@ class Handler(BaseHTTPRequestHandler):
   except ValueError: self._json(400,{"error":"invalid limit"}); return
   if path.path=="/health":
    self._json(200,{"ok":True,"database":str(DB_PATH)}); return
+  if path.path=="/debug/ring-sales":
+   with connect() as db:
+    total=db.execute("SELECT COUNT(*) FROM observations WHERE observation_type='listing_snapshot'").fetchone()[0]
+    ring_total=db.execute("SELECT COUNT(*) FROM ring_analyses").fetchone()[0]
+    blood_total=db.execute("SELECT COUNT(*) FROM ring_analyses WHERE craft_type='blood_candidate'").fetchone()[0]
+    rows=db.execute("""SELECT o.id,o.listing_key,o.payload_json,ra.stats_json,ra.craft_type
+      FROM observations o LEFT JOIN ring_analyses ra ON ra.observation_id=o.id
+      WHERE o.observation_type='listing_snapshot' ORDER BY o.id DESC""").fetchall()
+   counts={"listing_snapshots":total,"ring_analyses":ring_total,"blood_candidates":blood_total,
+    "record_types":{},"completed_sale_records":0,"completed_blood_records":0,
+    "parseable_rune_prices":0,"matching_fcr_10":0,"matching_fcr_10_and_two_stats":0}
+   samples=[]
+   for row in rows:
+    try:
+     payload=json.loads(row["payload_json"]); listing=payload.get("listing") or {}
+     kind=listing.get("record_type") or "missing"
+     counts["record_types"][kind]=counts["record_types"].get(kind,0)+1
+     is_sale=(kind=="completed_sale_observation" or listing.get("transaction_status")=="completed_sale_page_record")
+     if is_sale:
+      counts["completed_sale_records"]+=1
+      if row["craft_type"]!="blood_candidate": continue
+      counts["completed_blood_records"]+=1
+      trade=(listing.get("i_give_text") or listing.get("observed_trade_text") or "").strip()
+      parsed=parse_rune_request(trade); value=rune_bundle_value_pskulls(parsed)
+      if value["value_pskulls"] is None: 
+       if len(samples)<8: samples.append({"observation_id":row["id"],"reason":"unparsed_or_unknown_price","trade_text":trade,"parsed_runes":parsed})
+       continue
+      counts["parseable_rune_prices"]+=1
+      stats=json.loads(row["stats_json"] or "{}")
+      if stats.get("fcr")==10:
+       counts["matching_fcr_10"]+=1
+       if len(stats)>=2: counts["matching_fcr_10_and_two_stats"]+=1
+      if len(samples)<8: samples.append({"observation_id":row["id"],"reason":"parsed","trade_text":trade,"parsed_runes":parsed,"price_pskulls":value["value_pskulls"],"stats":stats})
+    except (ValueError,TypeError,KeyError,json.JSONDecodeError):
+     continue
+   self._json(200,{"ok":True,"database":str(DB_PATH),"counts":counts,"samples":samples}); return
   if path.path=="/jewels":
    with connect() as db:
     rows=db.execute("""SELECT j.*,o.listing_key,o.listing_title,o.source_url,o.captured_at
