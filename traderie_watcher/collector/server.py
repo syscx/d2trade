@@ -273,7 +273,7 @@ class Handler(BaseHTTPRequestHandler):
       score_gap=abs(target_score-other_score)
       quality=ring_quality_gap(target,other)
       quality_penalty=quality["penalty"]
-      distance=stat_distance+(score_gap/10.0)*0.75+quality_penalty
+      distance=stat_distance+(score_gap/100.0)*0.75+quality_penalty
       comps.append({"distance":distance,"stat_distance":stat_distance,"score_gap":score_gap,"quality_gap":quality,"quality_penalty":quality_penalty,
        "value":float(price["value_pskulls"]),"weight":0.90,"observation_id":row["id"],
        "trade_text":trade_text,"listing_key":listing_key,"captured_at":row["captured_at"],
