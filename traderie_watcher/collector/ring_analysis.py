@@ -9,22 +9,22 @@ import re
 from typing import Any
 
 PATTERNS = {
- "fcr":[r"(\\d{1,2})\\s*%?\\s*(?:faster\\s+cast\\s+rate|fcr)\\b"],
- "life_leech":[r"(\\d{1,2})\\s*%?\\s*life\\s+(?:stolen|leech)\\s+per\\s+hit",r"(\\d{1,2})\\s*%?\\s*life\\s+leech"],
- "mana_leech":[r"(\\d{1,2})\\s*%?\\s*mana\\s+(?:stolen|leech)\\s+per\\s+hit",r"(\\d{1,2})\\s*%?\\s*mana\\s+leech"],
- "life":[r"[+]?([\\d]{1,3})\\s+to\\s+life\\b"],
- "strength":[r"[+]?([\\d]{1,2})\\s+to\\s+strength\\b"],
- "dexterity":[r"[+]?([\\d]{1,2})\\s+to\\s+dexterity\\b"],
- "all_resist":[r"[+]?([\\d]{1,2})\\s+to\\s+all\\s+resistances?\\b"],
- "fire_resist":[r"[+]?([\\d]{1,2})\\s*%?\\s*(?:to\\s+)?fire\\s+resist"],
- "cold_resist":[r"[+]?([\\d]{1,2})\\s*%?\\s*(?:to\\s+)?cold\\s+resist"],
- "lightning_resist":[r"[+]?([\\d]{1,2})\\s*%?\\s*(?:to\\s+)?lightning\\s+resist"],
- "poison_resist":[r"[+]?([\\d]{1,2})\\s*%?\\s*(?:to\\s+)?poison\\s+resist"],
- "mana":[r"[+]?([\\d]{1,3})\\s+to\\s+mana\\b"],
- "attack_rating":[r"[+]?([\\d]{1,3})\\s+to\\s+attack\\s+rating\\b"],
- "magic_find":[r"(\\d{1,2})\\s*%?\\s*better\\s+chance\\s+of\\s+getting\\s+magic\\s+items?"],
- "gold_find":[r"(\\d{1,3})\\s*%?\\s*(?:extra\\s+gold|gold\\s+find)"],
- "life_replenish":[r"replenish\\s+life\\s*\\+?\\s*(\\d{1,2})",r"\\+(\\d{1,2})\\s+replenish\\s+life"],
+ "fcr":[r"(\d{1,2})\s*%?\s*(?:faster\s+cast\s+rate|fcr)\b"],
+ "life_leech":[r"(\d{1,2})\s*%?\s*life\s+(?:stolen|leech)\s+per\s+hit",r"(\d{1,2})\s*%?\s*life\s+leech"],
+ "mana_leech":[r"(\d{1,2})\s*%?\s*mana\s+(?:stolen|leech)\s+per\s+hit",r"(\d{1,2})\s*%?\s*mana\s+leech"],
+ "life":[r"[+]?([\d]{1,3})\s+to\s+life\b"],
+ "strength":[r"[+]?([\d]{1,2})\s+to\s+strength\b"],
+ "dexterity":[r"[+]?([\d]{1,2})\s+to\s+dexterity\b"],
+ "all_resist":[r"[+]?([\d]{1,2})\s+to\s+all\s+resistances?\b"],
+ "fire_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?fire\s+resist"],
+ "cold_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?cold\s+resist"],
+ "lightning_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?lightning\s+resist"],
+ "poison_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?poison\s+resist"],
+ "mana":[r"[+]?([\d]{1,3})\s+to\s+mana\b"],
+ "attack_rating":[r"[+]?([\d]{1,3})\s+to\s+attack\s+rating\b"],
+ "magic_find":[r"(\d{1,2})\s*%?\s*better\s+chance\s+of\s+getting\s+magic\s+items?"],
+ "gold_find":[r"(\d{1,3})\s*%?\s*(?:extra\s+gold|gold\s+find)"],
+ "life_replenish":[r"replenish\s+life\s*\+?\s*(\d{1,2})",r"\+(\d{1,2})\s+replenish\s+life"],
 }
 
 FIXED_BLOOD_KEYS = {"life_leech", "life", "strength"}
@@ -107,7 +107,7 @@ def ring_quality_gap(target: dict[str, int], comparable: dict[str, int]) -> dict
 
 def extract_ring_properties(title: str, visible_text: str) -> dict[str,Any] | None:
  raw=" ".join(x for x in (title,visible_text) if x)
- if not re.search(r"\\bring\\b",raw,re.I): return None
+ if not re.search(r"\bring\b",raw,re.I): return None
  stats={}
  for key,patterns in PATTERNS.items():
   for pattern in patterns:
