@@ -6,6 +6,7 @@ from typing import Any
 PATTERNS = {
  "fcr":[r"(\d{1,2})\s*%?\s*(?:faster\s+cast\s+rate|fcr)\b"],
  "life_leech":[r"(\d{1,2})\s*%?\s*(?:life\s+)?(?:stolen|leech)\s+per\s+hit",r"(\d{1,2})\s*%?\s*life\s+leech"],
+ "mana_leech":[r"(\d{1,2})\s*%?\s*(?:mana\s+)?(?:stolen|leech)\s+per\s+hit",r"(\d{1,2})\s*%?\s*mana\s+leech"],
  "life":[r"[+]?([\d]{1,3})\s+to\s+life\b"],
  "strength":[r"[+]?([\d]{1,2})\s+to\s+strength\b"],
  "dexterity":[r"[+]?([\d]{1,2})\s+to\s+dexterity\b"],
@@ -34,6 +35,9 @@ def score_ring_stats(stats: dict[str, int]) -> tuple[float, list[str]]:
  elif fcr is not None: reasons.append(f"Invalid Blood-ring FCR value ({fcr}%)")
  leech=stats.get("life_leech",0)
  if leech: add(1,"Life leech (reduced weight)")
+ mana_leech=stats.get("mana_leech",0)
+ if mana_leech>=4: add(2,"Mana leech (useful roll)")
+ elif mana_leech>0: add(1,"Mana leech (low roll)")
  for key,label in (("life","Life"),("strength","Strength"),("dexterity","Dexterity")):
   value=stats.get(key,0)
   if key=="life":
@@ -61,6 +65,22 @@ def score_ring_stats(stats: dict[str, int]) -> tuple[float, list[str]]:
  elif gf>0: add(0.25,"Gold Find (minimal bonus)")
  return round(score,2), reasons
 
+
+def ring_quality_features(stats: dict[str, int]) -> set[str]:
+ thresholds = {"mana_leech":4,"life_leech":3,"dexterity":5,"strength":5,"life":15,"attack_rating":100,"all_resist":10}
+ return {key for key, minimum in thresholds.items() if stats.get(key,0) >= minimum}
+
+
+def ring_quality_gap(target: dict[str, int], comparable: dict[str, int]) -> dict[str, Any]:
+ target_features=ring_quality_features(target)
+ comparable_features=ring_quality_features(comparable)
+ missing=sorted(comparable_features-target_features)
+ extra=sorted(target_features-comparable_features)
+ return {"target_features":sorted(target_features),"comparable_features":sorted(comparable_features),
+  "missing_from_target":missing,"missing_from_comparable":extra,
+  "mismatch_count":len(missing)+len(extra),"penalty":round(0.12*(len(missing)+len(extra)),4)}
+
+
 def extract_ring_properties(title: str, visible_text: str) -> dict[str,Any] | None:
  raw=" ".join(x for x in (title,visible_text) if x)
  if not re.search(r"\bring\b",raw,re.I): return None
@@ -77,4 +97,4 @@ def extract_ring_properties(title: str, visible_text: str) -> dict[str,Any] | No
  elif score>=3: verdict="useful ring; value depends on caster build and other affixes"
  else: verdict="limited recognized premium stats; manual review"
  valid_blood_fcr = fcr is None or fcr == 10
- return {"item_type":"ring","craft_type":"blood_candidate" if blood_candidate and valid_blood_fcr else "unknown_or_other","stats":stats,"heuristic_score":score,"verdict":verdict,"reasons":reasons,"confidence":"low","fcr_valid_for_blood_ring":valid_blood_fcr,"raw_text":raw[:4000],"extraction_version":3}
+ return {"item_type":"ring","craft_type":"blood_candidate" if blood_candidate and valid_blood_fcr else "unknown_or_other","stats":stats,"heuristic_score":score,"verdict":verdict,"reasons":reasons,"confidence":"low","fcr_valid_for_blood_ring":valid_blood_fcr,"raw_text":raw[:4000],"extraction_version":4}
