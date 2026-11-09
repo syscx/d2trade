@@ -50,6 +50,27 @@ def initialize():
   cols={r["name"] for r in db.execute("PRAGMA table_info(jewel_analyses)")}
   if "requested_runes_json" not in cols:
    db.execute("ALTER TABLE jewel_analyses ADD COLUMN requested_runes_json TEXT NOT NULL DEFAULT '[]'")
+  # Backfill previously captured listings so existing blood rings are analyzed.
+  existing={r["observation_id"] for r in db.execute("SELECT observation_id FROM ring_analyses")}
+  old_rows=db.execute("SELECT id,payload_json FROM observations WHERE observation_type='listing_snapshot' ORDER BY id").fetchall()
+  for old in old_rows:
+   try:
+    payload=json.loads(old["payload_json"])
+    listing=payload.get("listing") if isinstance(payload,dict) else None
+    if not isinstance(listing,dict): continue
+    jewel_row=db.execute("SELECT requested_runes_json FROM jewel_analyses WHERE observation_id=?",(old["id"],)).fetchone()
+    if jewel_row and not jewel_row["requested_runes_json"]:
+     parsed_runes=parse_rune_request(listing.get("i_give_text"))
+     db.execute("UPDATE jewel_analyses SET requested_runes_json=? WHERE observation_id=?",
+      (json.dumps(parsed_runes,ensure_ascii=False),old["id"]))
+    if old["id"] not in existing:
+     ring=extract_ring_properties(str(listing.get("title") or ""),str(listing.get("visible_text") or ""))
+     if ring:
+      db.execute("""INSERT OR IGNORE INTO ring_analyses(observation_id,analyzed_at,craft_type,stats_json,analysis_json,raw_text)
+       VALUES(?,?,?,?,?,?)""",(old["id"],datetime.now(timezone.utc).isoformat(),ring["craft_type"],
+       json.dumps(ring["stats"],sort_keys=True),json.dumps(ring,ensure_ascii=False),ring["raw_text"]))
+   except (ValueError,TypeError,json.JSONDecodeError):
+    continue
 
 class Handler(BaseHTTPRequestHandler):
  server_version="TraderieLocalCollector/0.2"
