@@ -64,7 +64,7 @@ def analyze_listing(listing: dict[str,Any]) -> dict[str,Any] | None:
  extracted=extract_jewel_properties(str(listing.get("title") or ""),str(listing.get("visible_text") or ""))
  if extracted is None: return None
  trade=listing.get("i_give_text"); asking=listing.get("asking_price_text")
- return {**extracted,"price_observation":{"displayed_asking_price":asking or None,"requested_trade_text":trade or None,"requested_runes":parse_rune_request(trade),"price_kind":"asking_or_trade_request" if asking or trade else "not_observed","is_confirmed_sale":False,"numeric_estimate":None,"note":"Seller asks are not completed-sale prices; rune quantities are not converted into value."},"recommendation":recommend_jewel(extracted["stats"])}
+ return {**extracted,"trade_observation":{"displayed_asking_price":None,"observed_trade_text":trade or None,"observed_runes":parse_rune_request(trade),"price_kind":"not_observed","transaction_status":"unknown","is_confirmed_sale":False,"numeric_estimate":None,"note":"Visible trade-side text only; asking price and completed-sale status are not established by the extension."},"recommendation":recommend_jewel(extracted["stats"])}
 
 def stat_similarity(left: dict[str,int], right: dict[str,int]) -> float:
  shared=set(left)&set(right)
