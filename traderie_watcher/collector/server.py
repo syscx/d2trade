@@ -19,12 +19,21 @@ def connect():
  db=sqlite3.connect(DB_PATH); db.row_factory=sqlite3.Row; return db
 
 def is_completed_sale_listing(listing):
- # Never infer a completed transaction from barter_offer or the two trade-direction labels.
- # Only explicit transaction-state metadata is accepted.
- return (
-  listing.get("record_type") == "completed_sale_observation"
-  or listing.get("transaction_status") == "completed_sale_page_record"
- )
+ # Traderie completed-sale cards use "They Give" for the item and "I Give"
+ # for the seller-entered final trade price. Legacy collector stored the
+ # completed-sale classification as listing_type="barter_offer".
+ kind=listing.get("record_type")
+ status=listing.get("transaction_status")
+ if kind=="completed_sale_observation" or status=="completed_sale_page_record":
+  return True
+ if kind or status:
+  return False
+ legacy_type=listing.get("listing_type")
+ they_give=str(listing.get("they_give_text") or "").strip()
+ i_give=str(listing.get("i_give_text") or "").strip()
+ visible=str(listing.get("visible_text") or "")
+ has_both_labels=("They Give" in visible and "I Give" in visible)
+ return legacy_type=="barter_offer" and bool(they_give and i_give and has_both_labels)
 
 
 def initialize():
