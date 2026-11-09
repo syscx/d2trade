@@ -56,9 +56,15 @@ def recommend_jewel(stats: dict[str,int]) -> dict[str,Any]:
  return {"heuristic_score":score,"archetypes":sorted(kinds),"verdict":verdict,"recommended_action":action,"reasons":reasons,"confidence":"low","confidence_note":"Rule-based screening only; not confidence in market value.","disclaimer":"No build context or verified sale data is available; manually inspect before pricing."}
 
 def parse_rune_request(text: str | None) -> list[dict[str,Any]]:
- if not text: return []
+ """Parse rune barter terms; a bare rune name means quantity one."""
+ if not text:
+  return []
  names=r"(El|Eld|Tir|Nef|Eth|Ith|Tal|Ral|Ort|Thul|Amn|Sol|Shael|Dol|Hel|Io|Lum|Ko|Fal|Lem|Pul|Um|Mal|Ist|Gul|Vex|Ohm|Lo|Sur|Ber|Jah|Cham|Zod)"
- return [{"quantity":int(m.group(1)),"rune":m.group(2).title()} for m in re.finditer(rf"(\d+)\s*[xX]?\s*{names}\s*(?:rune)?\b",text,re.I)]
+ pattern=rf"(?<![A-Za-z])(?:(\\d+)\\s*[xX]?\\s*)?{names}(?:\\s*rune)?(?![A-Za-z])"
+ found=[]
+ for match in re.finditer(pattern,text,re.I):
+  found.append({"quantity":int(match.group(1) or 1),"rune":match.group(2).title()})
+ return found
 
 def analyze_listing(listing: dict[str,Any]) -> dict[str,Any] | None:
  extracted=extract_jewel_properties(str(listing.get("title") or ""),str(listing.get("visible_text") or ""))
