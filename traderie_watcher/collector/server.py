@@ -216,7 +216,7 @@ class Handler(BaseHTTPRequestHandler):
     # Their 90% reliability is a statistical weight, not a 10% price discount.
     from jewel_analysis import parse_rune_request
     with connect() as db:
-     rows=db.execute("""SELECT o.id,o.listing_key,o.payload_json,o.captured_at,ra.stats_json
+     rows=db.execute("""SELECT o.id,o.listing_key,o.payload_json,o.captured_at,ra.stats_json,ra.craft_type
        FROM observations o JOIN ring_analyses ra ON ra.observation_id=o.id
        WHERE o.observation_type='listing_snapshot'
        ORDER BY o.captured_at DESC,o.id DESC""").fetchall()
