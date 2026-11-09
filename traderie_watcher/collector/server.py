@@ -82,11 +82,16 @@ def initialize():
      parsed_runes=parse_rune_request(listing.get("i_give_text"))
      db.execute("UPDATE jewel_analyses SET requested_runes_json=? WHERE observation_id=?",
       (json.dumps(parsed_runes,ensure_ascii=False),old["id"]))
-    if old["id"] not in existing:
-     ring=extract_ring_properties(str(listing.get("title") or ""),str(listing.get("visible_text") or ""))
-     if ring:
-      db.execute("""INSERT OR IGNORE INTO ring_analyses(observation_id,analyzed_at,craft_type,stats_json,analysis_json,raw_text)
-       VALUES(?,?,?,?,?,?)""",(old["id"],datetime.now(timezone.utc).isoformat(),ring["craft_type"],
+    # Re-analyze old snapshots on startup so newly supported stats (Dexterity,
+    # Magic Find, Gold Find) are populated in the existing local database too.
+    ring=extract_ring_properties(str(listing.get("title") or ""),str(listing.get("visible_text") or ""))
+    if ring:
+     db.execute("""INSERT INTO ring_analyses(observation_id,analyzed_at,craft_type,stats_json,analysis_json,raw_text)
+      VALUES(?,?,?,?,?,?)
+      ON CONFLICT(observation_id) DO UPDATE SET analyzed_at=excluded.analyzed_at,
+       craft_type=excluded.craft_type,stats_json=excluded.stats_json,
+       analysis_json=excluded.analysis_json,raw_text=excluded.raw_text""",
+      (old["id"],datetime.now(timezone.utc).isoformat(),ring["craft_type"],
        json.dumps(ring["stats"],sort_keys=True),json.dumps(ring,ensure_ascii=False),ring["raw_text"]))
    except (ValueError,TypeError,json.JSONDecodeError):
     continue
