@@ -312,11 +312,32 @@ class Handler(BaseHTTPRequestHandler):
       else:
        comparable_quality=max(float(item["heuristic_score"]),1.0)
        target_quality=max(quality_percent,1.0)
-      quality_ratio=max(0.50,min(1.50,target_quality/comparable_quality))
+      raw_quality_ratio=target_quality/comparable_quality
+      # A target that is stronger than its comparable may retain an upward
+      # quality adjustment. A weaker target must never receive an upward
+      # adjustment from a stronger sale record.
+      if item.get("build"):
+       weaker_by=max(0.0,float(item.get("sale_build_fit",0.0))-float(item.get("target_build_fit",0.0)))
+       directional_excess=max(0.0,weaker_by-10.0)
+       directional_penalty=__import__("math").exp(-0.12*directional_excess)
+       quality_ratio=max(0.50,min(1.50,raw_quality_ratio))
+       if weaker_by>0:
+        quality_ratio=min(1.0,quality_ratio)
+      else:
+       weaker_by=max(0.0,float(item["heuristic_score"])-quality_percent)
+       directional_excess=max(0.0,weaker_by-10.0)
+       directional_penalty=__import__("math").exp(-0.12*directional_excess)
+       quality_ratio=max(0.50,min(1.50,raw_quality_ratio))
+       if weaker_by>0:
+        quality_ratio=min(1.0,quality_ratio)
       adjusted_price=max(0.0,item["value"]*(quality_ratio**0.75))
-      combined_weight=item["weight"]*distance_weight*float(item.get("build_match_weight",1.0))
+      combined_weight=(item["weight"]*distance_weight*
+       float(item.get("build_match_weight",1.0))*directional_penalty)
       adjusted_rows.append({**item,"distance_weight":distance_weight,
        "quality_ratio":quality_ratio,"adjusted_price":adjusted_price,
+       "target_weaker_score_gap":round(weaker_by,2),
+       "directional_penalty_threshold":10.0,
+       "directional_price_penalty":round(directional_penalty,4),
        "combined_weight":combined_weight})
      adjusted_rows.sort(key=lambda x:x["adjusted_price"])
      return adjusted_rows
@@ -400,12 +421,13 @@ class Handler(BaseHTTPRequestHandler):
        prior["also_matches"]=sorted(set(prior.get("also_matches",[])+[item["build"]]))
      selected=sorted(dedup.values(),key=lambda x:x["build_distance"])[:20]
      if not selected:
-      phase=("phase_2_nearest_sales_fallback" if comps else "phase_2_build_heuristic_no_sales")
-      # Keep nearest completed sales as a low-confidence fallback even when
-      # profiles are weak or the historical sample lacks enough parsed stats.
-      selected=comps[:5]
-      phase_reason=("Phase 2 had no completed sales with a sufficiently strong build match; "
-                    "using the nearest available Blood Ring sales as weak fallback evidence.")
+      phase="phase_2_insufficient_relevant_sales"
+      # Distant or audience-mismatched sales must not create an invented price.
+      # In particular, a weak ring must not inherit the price of much stronger
+      # melee sales merely because no close historical match exists.
+      selected=[]
+      phase_reason=("Phase 2 found no sufficiently relevant completed sales. "
+                    "No market median is reported; collect closer sales instead.")
      else:
       phase_reason=("Phase 1 lacked three close sales. Phase 2 valued the ring using "
                     "completed sales matching its overlapping build audiences.")
@@ -441,20 +463,21 @@ class Handler(BaseHTTPRequestHandler):
     else:
      # No priced completed sale can support a market estimate. Retain a
      # transparent heuristic anchor, but mark it explicitly as uncalibrated.
-     anchor=max(1.0,quality_percent*0.25)
-     demand_multiplier=1.0+max(0.0,best_build_score/100.0-0.40)*0.8
-     breadth_bonus=max(0,len(viable_builds)-1)*0.10
-     med=anchor*(demand_multiplier+breadth_bonus)
-     low=med*0.55
-     high=med*1.65
-     method="build_heuristic_no_sale_evidence"
+     low=None
+     med=None
+     high=None
+     method="insufficient_relevant_completed_sales"
      confidence="very_low"
-     phase_reason += " No usable completed-sale price was available, so this is a heuristic-only estimate."
+     phase_reason += " No usable comparable sale supports a numeric price estimate."
 
     note=phase_reason
-    valuation={"status":"estimate_available","currency":"Pskulls",
-     "low":round(low,2),"median":round(med,2),"high":round(high,2),
-     "display":{"low":format_pskull_value(low),"median":format_pskull_value(med),"high":format_pskull_value(high)},
+    valuation={"status":("estimate_available" if med is not None else "insufficient_relevant_sales"),"currency":"Pskulls",
+     "low":round(low,2) if low is not None else None,
+     "median":round(med,2) if med is not None else None,
+     "high":round(high,2) if high is not None else None,
+     "display":{"low":format_pskull_value(low) if low is not None else None,
+      "median":format_pskull_value(med) if med is not None else None,
+      "high":format_pskull_value(high) if high is not None else None},
      "comparable_sales":len(adjusted),"eligible_comparable_sales":len(comps),
      "valuation_phase":phase,"phase1_rate":round(len(close)/max(len(comps),1),3),
      "phase1_close_sales":len(close),"phase1_required":3,
