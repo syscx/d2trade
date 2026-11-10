@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urljoin
 from jewel_analysis import analyze_listing, comparable_offer_summary, parse_rune_request
-from ring_analysis import extract_ring_properties, score_ring_stats, ring_quality_gap
+from ring_analysis import extract_ring_properties, score_ring_stats, ring_quality_gap, build_demand_analysis
 from valuation import rune_bundle_value_pskulls, format_pskull_value
 
 ROOT=Path(__file__).resolve().parent
@@ -285,15 +285,26 @@ class Handler(BaseHTTPRequestHandler):
     diagnostics["eligible_before_top_20"]=len(comps)
     MAX_COMPARABLE_DISTANCE=0.55
     close=[x for x in comps if x["distance"] <= MAX_COMPARABLE_DISTANCE]
-    selected=(close if len(close)>=3 else comps)[:20]
+    # Phase 1 requires at least three genuinely close completed sales.
+    # Distant sales are not substituted for close matches.
+    selected=close[:20] if len(close)>=3 else []
     diagnostics["distance_threshold"]=MAX_COMPARABLE_DISTANCE
     diagnostics["rejected_by_distance"]=sum(1 for x in comps if x["distance"] > MAX_COMPARABLE_DISTANCE)
     diagnostics["close_comparables"]=len(close)
     diagnostics["distance_fallback_used"]=bool(comps and len(close)<3)
+    diagnostics["sales_phase_qualified"]=len(close)>=3
 
     quality_percent=float(analysis.get("quality_score_percent",target_score))
     poor_combination=bool(analysis.get("poor_stat_combination"))
-    low_quality_cap=(quality_percent < 90.0 and poor_combination)
+    build_demand=build_demand_analysis(target)
+    best_build_score=float(build_demand["best_score"])
+    viable_build_count=int(build_demand["viable_profile_count"])
+    # Low-quality cap boundary: only rings below 65 quality, already marked
+    # poor, with no profile reaching 45 and a best profile below 35 are capped.
+    low_quality_cap=(
+      quality_percent < 65.0 and poor_combination and
+      viable_build_count == 0 and best_build_score < 35.0
+    )
     # If we have any completed sales, let the nearest sales inform the estimate.
     # Gaussian distance weights rapidly reduce influence from weak matches.
     adjusted=[]
@@ -322,46 +333,34 @@ class Handler(BaseHTTPRequestHandler):
       if running>=threshold: return item["adjusted_price"]
      return items[-1]["adjusted_price"]
 
-    if low_quality_cap:
-     # User's rule: only rings both below 90% and with poor stat combinations
-     # receive this conservative fallback. Score 28.25 maps to about 10 Pskulls.
-     fallback=max(1.0,min(15.0,quality_percent*0.35))
-     low=max(1.0,fallback*0.75); med=fallback; high=min(15.0,fallback*1.25)
-     method="low_quality_cap"
-     confidence="low"
-     note="Both conditions met: quality below 90% and poor stat combination. Conservative score-based fallback, capped at 15 Pskulls."
-    elif adjusted and diagnostics["distance_fallback_used"]:
-     # With fewer than three close matches, distant sales are weak evidence:
-     # retain their directional signal, but prevent them from dominating the
-     # estimate. Blend a conservative score anchor with a bounded market signal.
-     score_anchor=max(1.0,quality_percent*0.35)
-     market_low=weighted_quantile(adjusted,0.25)
-     market_med=weighted_quantile(adjusted,0.50)
-     market_high=weighted_quantile(adjusted,0.75)
-     market_ceiling=max(15.0,score_anchor*3.0)
-     bounded_low=min(market_low,market_ceiling)
-     bounded_med=min(market_med,market_ceiling)
-     bounded_high=min(market_high,market_ceiling)
-     low=score_anchor*0.75*0.75+bounded_low*0.25
-     med=score_anchor*0.75+bounded_med*0.25
-     high=score_anchor*1.25*0.75+bounded_high*0.25
-     method="bounded_distance_fallback"
-     confidence="low"
-     note="Fewer than three close completed sales: distant sales contribute only 25% of the estimate and are capped at three times the score-based anchor (minimum 15 Pskulls). The remaining 75% comes from the conservative quality anchor. 90% is sale reliability weight, not a price discount."
-    elif adjusted:
+    if adjusted:
+     # Phase 1: strong completed-sale evidence always wins over heuristic caps.
      low=weighted_quantile(adjusted,0.25)
      med=weighted_quantile(adjusted,0.50)
      high=weighted_quantile(adjusted,0.75)
      method="completed_sale_comparables"
      confidence="high"
-     note="Completed sales only. At least three close matches support Gaussian distance weighting and directional quality adjustment. 90% is sale reliability weight, not a price discount."
+     note="Phase 1: at least three close completed Blood Ring sales (distance <= 0.55). Sales evidence takes priority over heuristic caps. 90% is sale reliability weight, not a price discount."
+    elif low_quality_cap:
+     fallback=max(1.0,min(15.0,quality_percent*0.35))
+     low=max(1.0,fallback*0.75); med=fallback; high=min(15.0,fallback*1.25)
+     method="low_quality_cap"
+     confidence="low"
+     note="Low-quality boundary: quality below 65, poor stat combination, no build profile reaches 45, and best profile score below 35. Conservative estimate capped at 15 Pskulls."
     else:
-     # Last-resort estimate only when no usable historical sale exists.
-     fallback=max(1.0,quality_percent*0.35)
-     low=fallback*0.75; med=fallback; high=fallback*1.25
-     method="quality_score_fallback"
+     # Phase 2: use build fit and cross-build demand when close sales are scarce.
+     score_anchor=max(1.0,quality_percent*0.35)
+     best_fit=max(0.0,min(1.0,best_build_score/100.0))
+     breadth_bonus=max(0,viable_build_count-1)*0.30
+     demand_multiplier=1.0+max(0.0,best_fit-0.45)*1.25+breadth_bonus
+     fallback=score_anchor*demand_multiplier
+     low=fallback*0.65
+     med=fallback
+     high=fallback*(1.45+0.10*max(0,viable_build_count-1))
+     method="build_aware_fallback"
      confidence="very_low"
-     note="No parseable completed-sale Blood Ring comparables exist; estimate is heuristic only and should be recalibrated when sales are collected."
+     note=("Phase 2: fewer than three close completed sales. Estimate uses build-profile fit plus a controlled premium for demand across multiple builds. "
+       "Profile weights are initial heuristics, not market-trained prices; recalibrate as completed sales accumulate.")
     valuation={"status":"estimate_available","currency":"Pskulls",
      "low":round(low,2),"median":round(med,2),"high":round(high,2),
      "display":{"low":format_pskull_value(low),"median":format_pskull_value(med),"high":format_pskull_value(high)},
@@ -371,7 +370,10 @@ class Handler(BaseHTTPRequestHandler):
      "effective_weight":round(sum(x["combined_weight"] for x in adjusted),4),
      "diagnostics":{"target_stats":target,"target_quality_score":quality_percent,
       "target_verdict":analysis["verdict"],"counts":diagnostics,
-      "selection_method":"same FCR; closest completed sales; Gaussian distance weighting; directional quality adjustment",
+      "build_demand":build_demand,
+      "low_quality_cap_boundary":{"quality_below":65,"requires_poor_stat_combination":True,
+       "requires_zero_viable_profiles":True,"best_profile_score_below":35},
+      "selection_method":("close completed sales first (minimum 3, distance <= 0.55); otherwise build-profile fit and multi-build demand"),
       "selected_comparables":[{"observation_id":x["observation_id"],
        "captured_at":x["captured_at"],"sale_price_pskulls":x["value"],
        "sale_price_display":format_pskull_value(x["value"]),
