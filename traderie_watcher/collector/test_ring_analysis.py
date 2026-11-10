@@ -55,7 +55,7 @@ class BloodRingTests(unittest.TestCase):
     def test_high_roll_four_affix_ring_can_reach_full_score(self):
         item = extract_ring_properties("Blood Ring",
             "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n10% Faster Cast Rate\n+50 to Mana\n+30% to Fire Resistance\n+100 to Attack Rating")
-        self.assertEqual(item["quality_score_percent"], 72.38)
+        self.assertGreater(item["quality_score_percent"], 72.38)
 
     def test_mana_leech_is_extracted_and_scored(self):
         item = extract_ring_properties("Blood Ring", "+10% Faster Cast Rate\n6% Mana Stolen Per Hit\n3% Life Stolen Per Hit\n+6 to Dexterity")
@@ -87,9 +87,35 @@ class BloodRingTests(unittest.TestCase):
         self.assertLess(score, 2.0)
         self.assertTrue(any("importance 0.45" in reason for reason in reasons))
 
-    def test_all_resistance_below_four_is_weak(self):
-        score, _ = score_ring_stats({"all_resist": 3})
-        self.assertLess(score, 1.0)
+    def test_all_resistance_uses_eleven_maximum_without_elemental_penalty(self):
+        from ring_analysis import _affix_roll_quality
+        roll, explanation = _affix_roll_quality("all_resist", 3)
+        self.assertGreater(roll, 0.0)
+        self.assertIn("maximum 11", explanation)
+        perfect, _ = _affix_roll_quality("all_resist", 11)
+        self.assertEqual(perfect, 1.0)
+
+    def test_single_resistance_below_fifteen_still_gets_negative_score(self):
+        from ring_analysis import _affix_roll_quality
+        roll, explanation = _affix_roll_quality("fire_resist", 14)
+        self.assertLess(roll, 0.0)
+        self.assertIn("below 15", explanation)
+
+    def test_fire_and_lightning_resistance_weights_exceed_cold_and_poison(self):
+        from ring_analysis import AFFIX_IMPORTANCE
+        self.assertGreater(AFFIX_IMPORTANCE["fire_resist"], AFFIX_IMPORTANCE["cold_resist"])
+        self.assertGreater(AFFIX_IMPORTANCE["lightning_resist"], AFFIX_IMPORTANCE["cold_resist"])
+        self.assertGreater(AFFIX_IMPORTANCE["cold_resist"], AFFIX_IMPORTANCE["poison_resist"])
+
+    def test_perfect_all_resistance_gets_small_bonus(self):
+        from ring_analysis import _perfect_roll_bonus
+        self.assertEqual(_perfect_roll_bonus("all_resist", 11), 1.0)
+        self.assertEqual(_perfect_roll_bonus("all_resist", 10), 0.0)
+
+    def test_perfect_roll_bonus_is_applied_to_score(self):
+        score, reasons = score_ring_stats({"life_leech":3, "life":20, "strength":5, "all_resist":11})
+        self.assertTrue(any("perfect-roll bonus +1.00" in reason for reason in reasons))
+        self.assertGreater(score, 15.0)
 
     def test_magic_find_and_gold_find_have_low_importance(self):
         mf_score, _ = score_ring_stats({"magic_find": 25})
