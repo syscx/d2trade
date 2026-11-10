@@ -23,6 +23,10 @@ from generate_test_blood_ring import generate
 
 API_URL = "http://127.0.0.1:8765/analyze/ring"
 
+# Keep these two stable regression cases easy to inspect in every benchmark:
+# medium_2 is the known overpricing case; high_fcr_2 is the 10-FCR comparison.
+DETAILED_ANALYSIS_CASES = {"medium_2", "high_fcr_2"}
+
 # The first two are genuinely randomized by the seeded generator. Fixed seeds
 # make the benchmark repeatable while still exercising different stat mixes.
 RANDOM_CASES = (
@@ -162,13 +166,25 @@ def main() -> int:
             print(f"  Build fit: {match.get('build')}={match.get('fit_score')}/100 "
                   f"targets={match.get('target_coverage')}; "
                   f"stats={match.get('useful_stats')}")
-        for comparable in valuation.get("comparables", [])[:5]:
+        detail_rows = valuation.get("diagnostics", {}).get("selected_comparables", [])
+        rows_to_show = detail_rows if item["case"] in DETAILED_ANALYSIS_CASES else detail_rows[:5]
+        for comparable in rows_to_show:
             print(
                 "  comparable: "
-                f"{comparable.get('sale_price_display')} -> "
-                f"adjusted {comparable.get('estimated_contribution_pskulls')} Pskulls; "
-                f"distance={comparable.get('distance')}"
+                f"id={comparable.get('observation_id')} "
+                f"sale={comparable.get('sale_price_display')} "
+                f"adjusted={comparable.get('adjusted_price_display')} "
+                f"distance={comparable.get('distance')} "
+                f"build={comparable.get('build')} "
+                f"target_fit={comparable.get('target_build_fit')} "
+                f"sale_fit={comparable.get('sale_build_fit')} "
+                f"weaker_gap={comparable.get('target_weaker_score_gap')} "
+                f"directional_penalty={comparable.get('directional_price_penalty')} "
+                f"weight={comparable.get('weight')}"
             )
+            if item["case"] in DETAILED_ANALYSIS_CASES:
+                print(f"    sale_stats={json.dumps(comparable.get('stats', {}), sort_keys=True)}")
+                print(f"    build_distance_components={json.dumps(comparable.get('build_distance_components', {}), sort_keys=True)}")
 
     output = {
         "benchmark_cases": len(results),
