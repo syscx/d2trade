@@ -61,7 +61,7 @@ def _affix_roll_quality(key: str, value: int) -> tuple[float, str]:
    return (-0.05, "low attack rating is penalized")
   return (0.025 + _clamp((value-60)/40)*0.975, "attack rating scored from 60 to 100")
  maxima = {
-  "mana":50, "mana_leech":6, "dexterity":15,
+  "mana":50, "mana_leech":6, "mana_per_kill":3, "dexterity":15,
   "magic_find":25, "gold_find":100, "life_replenish":5,
   "all_resist":11, "fire_resist":30, "cold_resist":30,
   "lightning_resist":30, "poison_resist":30, "attack_rating":120, "poison_length_reduced":25,
