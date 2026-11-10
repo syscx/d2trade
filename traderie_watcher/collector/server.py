@@ -505,7 +505,7 @@ class Handler(BaseHTTPRequestHandler):
        "phase2":{"builds_evaluated":phase2_build_results,"build_sale_candidate_count":len(phase2_pool)}},
       "low_quality_cap_boundary":{"quality_below":65,"requires_poor_stat_combination":True,
        "requires_zero_viable_profiles":True,"best_profile_score_below":35},
-      "selection_method":"Phase 1: at least 3 close direct completed sales; Phase 2: build-fit-ranked completed sales when Phase 1 fails; heuristic only when no usable sale prices exist.",
+      "selection_method":"Phase 1: at least 3 close direct completed sales; Phase 2: build-fit-ranked completed sales when Phase 1 fails; no numeric estimate when no relevant completed sales exist.",
       "selected_comparables":[{"observation_id":x["observation_id"],
        "captured_at":x["captured_at"],"sale_price_pskulls":x["value"],
        "sale_price_display":format_pskull_value(x["value"]),
