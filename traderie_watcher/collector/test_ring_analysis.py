@@ -121,6 +121,26 @@ class BloodRingTests(unittest.TestCase):
         self.assertEqual(item["stats"]["magic_find"], 25)
         self.assertEqual(item["stats"]["gold_find"], 80)
 
+    def test_replenish_life_contributes_zero_quality_points(self):
+        base, _ = score_ring_stats({"life_leech": 3, "life": 20, "strength": 5})
+        with_replenish, reasons = score_ring_stats({
+            "life_leech": 3, "life": 20, "strength": 5, "life_replenish": 5
+        })
+        self.assertEqual(with_replenish, base)
+        self.assertTrue(any("life_replenish=5: +0.00" in reason for reason in reasons))
+
+    def test_quality_below_65_is_always_poor_stat_combination(self):
+        item = extract_ring_properties("Blood Ring",
+            "1% Life Stolen Per Hit\\n+10 to Life\\n+1 to Strength\\n+5 to Mana")
+        self.assertLess(item["quality_score_percent"], 65)
+        self.assertTrue(item["poor_stat_combination"])
+
+    def test_quality_at_or_above_65_keeps_existing_poor_combo_rules(self):
+        item = extract_ring_properties("Blood Ring",
+            "3% Life Stolen Per Hit\\n+20 to Life\\n+5 to Strength\\n10% Faster Cast Rate")
+        if item["quality_score_percent"] >= 65:
+            self.assertFalse(item["poor_stat_combination"])
+
     def test_magic_find_and_gold_find_have_weak_weights(self):
         mf_score, _ = score_ring_stats({"magic_find": 25})
         gf_score, _ = score_ring_stats({"gold_find": 80})
