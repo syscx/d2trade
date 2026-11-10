@@ -105,7 +105,7 @@ def score_ring_stats(stats: dict[str, int]) -> tuple[float, list[str]]:
   # Blood craft contributes up to 3% Life Leech and +5 Strength.
   # Any amount above those maxima is scored as an additional random affix.
   value=(max(0,raw_value-3) if key=="life_leech" else
-         max(0,raw_value-5) if key=="strength" else raw_value)
+         max(0,raw_value-5) if key=="strength" else\n         max(0,raw_value-20) if key=="life" else raw_value)
   if key in {"life_leech","strength"} and value<=0:
    continue
   roll, explanation=_affix_roll_quality(key,value)
