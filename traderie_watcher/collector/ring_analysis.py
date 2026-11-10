@@ -117,6 +117,79 @@ def score_ring_stats(stats: dict[str, int]) -> tuple[float, list[str]]:
  reasons.append(f"Total quality: {total:.2f}/100")
  return round(total,2),reasons
 
+
+# Build profiles are deliberately separate from the universal roll score.
+# Initial weights are transparent heuristics and should be calibrated against
+# collected sales rather than treated as established market coefficients.
+BUILD_PROFILES = {
+ "javazon": {
+  "fcr":1.00,"mana_leech":0.90,"all_resist":0.95,"attack_rating":0.85,
+  "dexterity":0.80,"strength":0.65,"life_leech":0.25,"life":0.35,
+  "mana":0.35,"fire_resist":0.55,"cold_resist":0.45,
+  "lightning_resist":0.65,"poison_resist":0.30,
+ },
+ "sorceress": {
+  "fcr":1.00,"mana":0.90,"mana_leech":0.85,"all_resist":0.80,
+  "fire_resist":0.60,"cold_resist":0.60,"lightning_resist":0.75,
+  "poison_resist":0.35,"dexterity":0.45,"strength":0.20,
+  "life":0.55,"life_leech":0.05,"attack_rating":0.02,
+ },
+ "melee": {
+  "fcr":0.20,"life_leech":0.95,"strength":0.90,"dexterity":0.85,
+  "attack_rating":0.95,"all_resist":0.80,"life":0.75,
+  "fire_resist":0.55,"cold_resist":0.45,"lightning_resist":0.65,
+  "poison_resist":0.30,"mana_leech":0.55,"mana":0.20,
+ },
+ "general_caster": {
+  "fcr":1.00,"mana":0.85,"mana_leech":0.75,"all_resist":0.80,
+  "fire_resist":0.60,"cold_resist":0.60,"lightning_resist":0.75,
+  "poison_resist":0.35,"dexterity":0.45,"strength":0.25,
+  "life":0.55,"life_leech":0.05,"attack_rating":0.02,
+ },
+}
+
+def _profile_roll_quality(key: str, value: int) -> float:
+ """Normalize a stat for build-fit scoring without reusing market importance."""
+ if key == "life_leech":
+  return _clamp(value / 3.0)
+ if key == "life":
+  return _clamp((value - 10.0) / 10.0)
+ if key == "strength":
+  return _clamp(value / 5.0)
+ return max(0.0, _affix_roll_quality(key, int(value))[0])
+
+def build_demand_analysis(stats: dict[str, int]) -> dict[str, Any]:
+ """Score the ring for each audience and summarize breadth of build demand."""
+ scores = {}
+ for profile, weights in BUILD_PROFILES.items():
+  candidates = []
+  for key, weight in weights.items():
+   if key in stats and weight > 0:
+    candidates.append((_profile_roll_quality(key, int(stats[key])) * weight, weight, key))
+  # Compare the best four available affixes against the best four possible
+  # weights for that profile, so missing irrelevant stats do not hurt it.
+  candidates.sort(reverse=True)
+  selected = candidates[:4]
+  denominator = sum(sorted(weights.values(), reverse=True)[:4]) or 1.0
+  score = 100.0 * sum(item[0] for item in selected) / denominator
+  scores[profile] = {
+   "score": round(max(0.0, min(100.0, score)), 2),
+   "useful_stats": [item[2] for item in selected],
+  }
+ ranked = sorted(scores.items(), key=lambda item: item[1]["score"], reverse=True)
+ viable = [name for name, result in ranked if result["score"] >= 45.0]
+ return {
+  "profiles": scores,
+  "ranked_profiles": [name for name, _ in ranked],
+  "best_profile": ranked[0][0] if ranked else None,
+  "best_score": ranked[0][1]["score"] if ranked else 0.0,
+  "viable_profile_count": len(viable),
+  "viable_profiles": viable,
+  "demand_tier": ("broad" if len(viable) >= 3 else
+                  "multi_build" if len(viable) == 2 else
+                  "niche" if len(viable) == 1 else "weak"),
+}
+
 def ring_quality_features(stats: dict[str,int]) -> set[str]:
  thresholds={"mana_leech":4,"life_leech":3,"dexterity":5,"strength":5,"life":15,"attack_rating":100,"all_resist":10}
  return {key for key,minimum in thresholds.items() if stats.get(key,0)>=minimum}
