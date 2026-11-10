@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urljoin
 from jewel_analysis import analyze_listing, comparable_offer_summary, parse_rune_request
-from ring_analysis import extract_ring_properties, score_ring_stats, ring_quality_gap, build_demand_analysis, build_recommendation
+from ring_analysis import extract_ring_properties, score_ring_stats, ring_quality_gap, build_demand_analysis, build_recommendation, BUILD_PROFILES
 from valuation import rune_bundle_value_pskulls, format_pskull_value
 
 ROOT=Path(__file__).resolve().parent
@@ -304,10 +304,15 @@ class Handler(BaseHTTPRequestHandler):
      adjusted_rows=[]
      for item in items:
       bandwidth=0.65
-      distance_weight=__import__("math").exp(-((item["distance"]/bandwidth)**2))
-      comparable_quality=max(float(item["heuristic_score"]),1.0)
-      target_quality=max(quality_percent,1.0)
-      quality_ratio=max(0.25,min(2.5,target_quality/comparable_quality))
+      effective_distance=float(item.get("build_distance",item["distance"]))
+      distance_weight=__import__("math").exp(-((effective_distance/bandwidth)**2))
+      if item.get("build"):
+       comparable_quality=max(float(item.get("sale_build_fit",0.0)),1.0)
+       target_quality=max(float(item.get("target_build_fit",0.0)),1.0)
+      else:
+       comparable_quality=max(float(item["heuristic_score"]),1.0)
+       target_quality=max(quality_percent,1.0)
+      quality_ratio=max(0.50,min(1.50,target_quality/comparable_quality))
       adjusted_price=max(0.0,item["value"]*(quality_ratio**0.75))
       combined_weight=item["weight"]*distance_weight*float(item.get("build_match_weight",1.0))
       adjusted_rows.append({**item,"distance_weight":distance_weight,
@@ -342,17 +347,29 @@ class Handler(BaseHTTPRequestHandler):
      # the target. A sale can support multiple overlapping build profiles.
      for build in viable_builds:
       target_fit=float(build_demand["profiles"][build]["score"])
+      build_weights=BUILD_PROFILES.get(build,{})
       build_sales=[]
       for item in comps:
+       if int(item["stats"].get("fcr",0)) != int(target.get("fcr",0)):
+        continue
        sale_demand=build_demand_analysis(item["stats"])
        sale_fit=float(sale_demand["profiles"].get(build,{}).get("score",0.0))
        if sale_fit < 25.0:
         continue
        fit_gap=abs(target_fit-sale_fit)/100.0
-       build_distance=float(item["distance"])+fit_gap*0.75
+       parts={}
+       for stat,weight in build_weights.items():
+        if weight<=0: continue
+        av=float(target.get(stat,0)); bv=float(item["stats"].get(stat,0))
+        scale=max(abs(av),abs(bv),10.0)
+        parts[stat]=abs(av-bv)/scale*float(weight)
+       denominator=sum(float(w) for w in build_weights.values() if w>0) or 1.0
+       build_stat_distance=sum(parts.values())/denominator
+       build_distance=build_stat_distance+fit_gap*0.25
        match_weight=max(0.05,min(1.0,(sale_fit/100.0)*__import__("math").exp(-fit_gap*2.0)))
        candidate={**item,"build":build,"target_build_fit":target_fit,
         "sale_build_fit":sale_fit,"build_distance":round(build_distance,4),
+        "build_distance_components":{k:round(v,4) for k,v in parts.items()},
         "build_match_weight":match_weight}
        build_sales.append(candidate)
       build_sales.sort(key=lambda x:x["build_distance"])
@@ -407,7 +424,14 @@ class Handler(BaseHTTPRequestHandler):
       confidence="high" if len(close)>=5 and sum(x["combined_weight"] for x in adjusted)>=1.5 else "medium"
      elif phase2_build_matched:
       method="phase_2_build_specific_completed_sales"
-      confidence="medium" if len(adjusted)>=3 and sum(x["combined_weight"] for x in adjusted)>=0.8 else "low"
+      prices=sorted(x["adjusted_price"] for x in adjusted)
+      p50=median(prices) if prices else 0.0
+      relative_range=(prices[-1]-prices[0])/max(p50,1.0) if len(prices)>1 else 1.0
+      effective=sum(x["combined_weight"] for x in adjusted)
+      confidence=("medium" if len(adjusted)>=5 and effective>=2.0 and relative_range<=0.35 else "low")
+      phase2_confidence_diagnostics={"relative_price_range":round(relative_range,3),
+       "effective_sample_weight":round(effective,3),"comparable_count":len(adjusted),
+       "medium_rule":"at least 5 comparables, effective weight >=2.0, relative range <=0.35"}
      else:
       method="phase_2_nearest_sales_without_build_match"
       confidence="low"
@@ -434,6 +458,7 @@ class Handler(BaseHTTPRequestHandler):
      "reliability_weight":0.90,"valuation_method":method,"confidence":confidence,
      "quality_score_percent":quality_percent,"poor_stat_combination":poor_combination,
      "effective_weight":round(sum(x["combined_weight"] for x in adjusted),4),
+     "phase2_confidence_diagnostics":(phase2_confidence_diagnostics if phase2_build_matched else None),
      "diagnostics":{"target_stats":target,"target_quality_score":quality_percent,
       "target_verdict":analysis["verdict"],"counts":diagnostics,
       "build_demand":build_demand,"build_recommendation":build_recommendation_result,
