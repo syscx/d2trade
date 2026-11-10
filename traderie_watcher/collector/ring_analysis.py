@@ -31,13 +31,13 @@ FIXED_BLOOD_KEYS = {"life_leech", "life", "strength"}
 RANDOM_AFFIX_KEYS = (
  "fcr", "mana_leech", "dexterity", "all_resist", "fire_resist",
  "cold_resist", "lightning_resist", "poison_resist", "mana",
- "attack_rating", "magic_find", "gold_find", "life_replenish",
+ "attack_rating", "magic_find", "gold_find", "life_replenish", "poison_length_reduced",
 )
 # Relative market usefulness of a perfect roll. FCR is the benchmark.
 # These are transparent initial heuristics, not fitted market coefficients.
 AFFIX_IMPORTANCE = {
  "fcr":1.00, "mana_leech":0.90, "all_resist":0.85,
- "fire_resist":0.85, "cold_resist":0.60, "lightning_resist":0.85, "poison_resist":0.50,
+ "fire_resist":0.85, "cold_resist":0.60, "lightning_resist":0.85, "poison_resist":0.50, "poison_length_reduced":0.35,
  "dexterity":0.75, "mana":0.55, "attack_rating":0.45,
  "life_replenish":0.00, "magic_find":0.20, "gold_find":0.08,
 }
@@ -63,7 +63,7 @@ def _affix_roll_quality(key: str, value: int) -> tuple[float, str]:
   "mana":50, "mana_leech":6, "dexterity":15,
   "magic_find":25, "gold_find":100, "life_replenish":5,
   "all_resist":11, "fire_resist":30, "cold_resist":30,
-  "lightning_resist":30, "poison_resist":30, "attack_rating":120,
+  "lightning_resist":30, "poison_resist":30, "attack_rating":120, "poison_length_reduced":25,
  }
  maximum = maxima.get(key)
  if maximum:
@@ -84,7 +84,7 @@ def _perfect_roll_bonus(key: str, value: int) -> float:
  maxima = {
   "fcr":10, "mana_leech":6, "all_resist":11,
   "fire_resist":30, "cold_resist":30, "lightning_resist":30,
-  "poison_resist":30, "mana":50, "dexterity":15,
+  "poison_resist":30, "poison_length_reduced":25, "mana":50, "dexterity":15,
   "attack_rating":100,
  }
  return 1.0 if AFFIX_IMPORTANCE.get(key, 0.0) > 0 and maxima.get(key) == value else 0.0
@@ -133,6 +133,13 @@ BUILD_PROFILES = {
   "fire_resist":0.60,"cold_resist":0.60,"lightning_resist":0.75,
   "poison_resist":0.35,"dexterity":0.45,"strength":0.20,
   "life":0.55,"life_leech":0.05,"attack_rating":0.02,
+ },
+ "es_sorceress": {
+  # FCR is a hard gate in this ring-specific profile; other gear may
+  # complete the character breakpoint, but this user-defined target wants FCR on the ring.
+  "fcr":1.00,"mana":1.00,"poison_resist":0.95,
+  "poison_length_reduced":0.90,"strength":0.45,"dexterity":0.50,
+  "all_resist":0.10,"life":0.10,"lightning_resist":0.10,
  },
  "melee": {
   "fcr":0.20,"life_leech":0.95,"strength":0.90,"dexterity":0.85,
@@ -194,7 +201,7 @@ def build_demand_analysis(stats: dict[str, int]) -> dict[str, Any]:
 # These are initial D2R ring heuristics, not claims about every build or market.
 BUILD_TARGETS = {
  "javazon": {"fcr":10,"mana_leech":4,"all_resist":8,"attack_rating":80,"dexterity":10},
- "sorceress": {"fcr":10,"mana":35,"mana_leech":4,"all_resist":8,"lightning_resist":20},
+ "sorceress": {"fcr":10,"mana":35,"mana_leech":4,"all_resist":8,"lightning_resist":20},\n "es_sorceress": {"fcr":10,"mana":35,"poison_resist":20,"poison_length_reduced":25,"strength":5,"dexterity":10},
  "melee": {"life_leech":3,"strength":5,"dexterity":10,"attack_rating":80,"all_resist":8},
  "general_caster": {"fcr":10,"mana":35,"mana_leech":4,"all_resist":8,"life":15},
 }
@@ -206,6 +213,8 @@ def build_recommendation(stats: dict[str, int]) -> dict[str, Any]:
  best = demand["best_profile"]
  score = float(demand["best_score"])
  recommended = best if score >= 45.0 else None
+ if recommended == "es_sorceress" and stats.get("fcr") != 10:
+  recommended = None
  target = BUILD_TARGETS.get(recommended, {}) if recommended else {}
  met = []
  missing = []
@@ -244,7 +253,7 @@ def build_recommendation(stats: dict[str, int]) -> dict[str, Any]:
    "target_count": len(target),
   },
   "summary": summary,
-  "caveat": "Build weights and target rolls are initial heuristics; validate them against actual build guides and completed-sale data.",
+  "caveat": "Build weights and target rolls are initial heuristics; validate them against actual build guides and completed-sale data. ES Sorceress FCR is a ring-profile hard gate requested by the user; the character FCR breakpoint is reached across all equipped gear.",
  }
 
 def ring_quality_features(stats: dict[str,int]) -> set[str]:
