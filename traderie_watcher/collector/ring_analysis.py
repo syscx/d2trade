@@ -37,7 +37,7 @@ RANDOM_AFFIX_KEYS = (
 # These are transparent initial heuristics, not fitted market coefficients.
 AFFIX_IMPORTANCE = {
  "fcr":1.00, "mana_leech":0.90, "all_resist":0.85,
- "fire_resist":0.70, "cold_resist":0.70, "lightning_resist":0.70, "poison_resist":0.55,
+ "fire_resist":0.85, "cold_resist":0.60, "lightning_resist":0.85, "poison_resist":0.50,
  "dexterity":0.75, "mana":0.55, "attack_rating":0.45,
  "life_replenish":0.00, "magic_find":0.20, "gold_find":0.08,
 }
@@ -54,9 +54,7 @@ def _affix_roll_quality(key: str, value: int) -> tuple[float, str]:
    return (-0.25 * (15-value)/15, "resistance below 15 receives negative scoring")
   return (_clamp((value-15)/15), "resistance scored from 15 to 30")
  if key == "all_resist":
-  if value < 4:
-   return (0.025, "all resistance below 4 is a very weak roll")
-  return (_clamp(value/20), "all resistance scored against 20")
+  return (_clamp(value/11), "all resistance scored against ring maximum 11")
  if key == "attack_rating":
   if value < 60:
    return (-0.05, "low attack rating is penalized")
@@ -64,6 +62,8 @@ def _affix_roll_quality(key: str, value: int) -> tuple[float, str]:
  maxima = {
   "mana":50, "mana_leech":6, "dexterity":15,
   "magic_find":25, "gold_find":100, "life_replenish":5,
+  "all_resist":11, "fire_resist":30, "cold_resist":30,
+  "lightning_resist":30, "poison_resist":30, "attack_rating":120,
  }
  maximum = maxima.get(key)
  if maximum:
@@ -79,6 +79,17 @@ def blood_craft_quality(stats: dict[str, int]) -> float:
   values.append(_clamp((value-minimum)/(maximum-minimum)) if value is not None else 0.0)
  return sum(values)/3.0
 
+def _perfect_roll_bonus(key: str, value: int) -> float:
+ """Small bonus for hitting the configured maximum on a useful affix."""
+ maxima = {
+  "fcr":10, "mana_leech":6, "all_resist":11,
+  "fire_resist":30, "cold_resist":30, "lightning_resist":30,
+  "poison_resist":30, "mana":50, "dexterity":15,
+  "attack_rating":120, "magic_find":25, "gold_find":100,
+ }
+ return 1.0 if AFFIX_IMPORTANCE.get(key, 0.0) > 0 and maxima.get(key) == value else 0.0
+
+
 def score_ring_stats(stats: dict[str, int]) -> tuple[float, list[str]]:
  """Return a 0-100 score: 15 fixed Blood points + four weighted affix slots."""
  fixed_score=blood_craft_quality(stats)*15.0
@@ -89,15 +100,17 @@ def score_ring_stats(stats: dict[str, int]) -> tuple[float, list[str]]:
    continue
   roll, explanation=_affix_roll_quality(key,int(stats[key]))
   importance=AFFIX_IMPORTANCE[key]
-  scored.append((key,roll,importance,explanation))
- # Select the four actual strongest affix candidates; each occupies one slot.
- scored.sort(key=lambda x:x[1]*x[2],reverse=True)
+  bonus=_perfect_roll_bonus(key,int(stats[key]))
+  scored.append((key,roll,importance,explanation,bonus))
+ # Select the four strongest affixes using their weighted score plus perfect-roll bonus.
+ scored.sort(key=lambda x:x[1]*x[2]*21.25+x[4],reverse=True)
  chosen=scored[:4]
  affix_score=0.0
- for key,roll,importance,explanation in chosen:
+ for key,roll,importance,explanation,bonus in chosen:
   points=roll*importance*21.25
-  affix_score+=points
-  reasons.append(f"{key}={stats[key]}: {points:+.2f}/21.25 (importance {importance:.2f}; {explanation})")
+  affix_score+=points+bonus
+  bonus_note=f"; perfect-roll bonus +{bonus:.2f}" if bonus else ""
+  reasons.append(f"{key}={stats[key]}: {points+bonus:+.2f}/21.25 (base {points:.2f}; importance {importance:.2f}{bonus_note}; {explanation})")
  for slot in range(4-len(chosen)):
   reasons.append(f"Empty random affix slot {slot+1}: 0/21.25")
  total=max(0.0,min(100.0,fixed_score+affix_score))
