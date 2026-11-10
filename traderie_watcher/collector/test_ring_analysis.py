@@ -124,8 +124,8 @@ class BloodRingTests(unittest.TestCase):
     def test_magic_find_and_gold_find_have_weak_weights(self):
         mf_score, _ = score_ring_stats({"magic_find": 25})
         gf_score, _ = score_ring_stats({"gold_find": 80})
-        self.assertEqual(mf_score, 1)
-        self.assertEqual(gf_score, 0.5)
+        self.assertEqual(mf_score, 4.25)  # 25/25 roll × 0.20 importance × 21.25 slot
+        self.assertEqual(gf_score, 1.36)  # 80/100 roll × 0.08 importance × 21.25 slot
 
 
 class RuneValueDisplayTests(unittest.TestCase):
