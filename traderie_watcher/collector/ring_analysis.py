@@ -62,7 +62,7 @@ def _affix_roll_quality(key: str, value: int) -> tuple[float, str]:
    return (-0.05, "low attack rating is penalized")
   return (0.025 + _clamp((value-60)/40)*0.975, "attack rating scored from 60 to 100")
  maxima = {
-  "mana":50, "mana_leech":6, "mana_per_kill":3, "dexterity":15,
+  "mana":50, "mana_leech":6, "mana_per_kill":1, "dexterity":15,
   "magic_find":25, "gold_find":100, "life_replenish":5,
   "all_resist":11, "fire_resist":30, "cold_resist":30,
   "lightning_resist":30, "poison_resist":30, "attack_rating":120, "poison_length_reduced":25,
@@ -172,7 +172,7 @@ def _profile_roll_quality(key: str, value: int) -> float:
  if key == "strength":
   return _clamp(value / 5.0)
  if key == "mana_per_kill":
-  return _clamp(value / 3.0)
+  return _clamp(value / 1.0)
  return max(0.0, _affix_roll_quality(key, int(value))[0])
 
 def build_demand_analysis(stats: dict[str, int]) -> dict[str, Any]:
@@ -219,7 +219,7 @@ def build_demand_analysis(stats: dict[str, int]) -> dict[str, Any]:
 
 BUILD_TARGETS = {
  "javazon": {"fcr":10,"mana_leech":4,"lightning_resist":20,"all_resist":8,"attack_rating":80},
- "sorceress": {"fcr":10,"mana":35,"mana_per_kill":2,"all_resist":8,"lightning_resist":20},
+ "sorceress": {"fcr":10,"mana":35,"mana_per_kill":1,"all_resist":8,"lightning_resist":20},
  "es_sorceress": {"fcr":10,"mana":35,"poison_resist":20,"poison_length_reduced":25,"strength":5,"dexterity":10},
  "melee": {"life_leech":3,"strength":5,"dexterity":10,"attack_rating":80,"all_resist":8},
  "general_caster": {"fcr":10,"mana":35,"mana_per_kill":2,"all_resist":8,"life":15},
