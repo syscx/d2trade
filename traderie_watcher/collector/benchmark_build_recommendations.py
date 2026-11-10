@@ -14,8 +14,8 @@ from ring_analysis import build_recommendation
 
 CASES = (
     {
-        "name": "javazon_premium",
-        "stats": {"fcr": 10, "mana_leech": 6, "all_resist": 11,
+        "name": "javazon_lightning_resist_priority",
+        "stats": {"fcr": 10, "mana_leech": 6, "lightning_resist": 30, "all_resist": 11,
                   "attack_rating": 100, "dexterity": 15},
         "expected_build": "javazon",
     },
@@ -26,8 +26,8 @@ CASES = (
         "expected_build": "melee",
     },
     {
-        "name": "caster_premium",
-        "stats": {"fcr": 10, "mana": 50, "mana_leech": 6,
+        "name": "caster_premium_mana_per_kill",
+        "stats": {"fcr": 10, "mana": 50, "mana_per_kill": 3,
                   "all_resist": 11, "lightning_resist": 30},
         "expected_build": "sorceress",
     },
