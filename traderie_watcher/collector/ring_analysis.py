@@ -33,7 +33,7 @@ FIXED_BLOOD_KEYS = {"life_leech", "life", "strength"}
 RANDOM_AFFIX_KEYS = (
  "fcr", "mana_leech", "dexterity", "all_resist", "fire_resist",
  "cold_resist", "lightning_resist", "poison_resist", "mana", "mana_per_kill",
- "attack_rating", "strength", "life_leech", "magic_find", "gold_find", "life_replenish", "poison_length_reduced",
+ "attack_rating", "min_damage", "max_damage", "damage_reduced", "magic_damage_reduced", "life", "strength", "life_leech", "magic_find", "gold_find", "life_replenish", "poison_length_reduced",
 )
 # Relative market usefulness of a perfect roll. FCR is the benchmark.
 # These are transparent initial heuristics, not fitted market coefficients.
@@ -41,7 +41,7 @@ AFFIX_IMPORTANCE = {
  "fcr":1.00, "mana_leech":0.90, "all_resist":0.85, "mana_per_kill":0.55,
  "fire_resist":0.85, "cold_resist":0.60, "lightning_resist":0.85, "poison_resist":0.50, "poison_length_reduced":0.35,
  "dexterity":0.75, "strength":0.90, "life_leech":0.95, "mana":0.55, "attack_rating":0.80,
- "life_replenish":0.00, "magic_find":0.20, "gold_find":0.08,
+ "life_replenish":0.12, "magic_find":0.20, "gold_find":0.08,\n "min_damage":1.00, "max_damage":1.00, "damage_reduced":0.12, "magic_damage_reduced":0.12,\n "energy":0.15, "defense":0.10, "fhr":0.25, "ias":0.65, "damage_to_mana":0.08, "life":0.65,
 }
 
 def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
@@ -64,7 +64,7 @@ def _affix_roll_quality(key: str, value: int) -> tuple[float, str]:
  maxima = {
   "mana":50, "mana_leech":6, "mana_per_kill":1, "dexterity":15,
   "strength":20, "life_leech":6, "magic_find":25, "gold_find":100,
-  "life_replenish":5, "all_resist":11, "fire_resist":30, "cold_resist":30,
+  "life_replenish":5, "min_damage":9, "max_damage":15, "damage_reduced":2,\n  "magic_damage_reduced": 2, "energy":15, "defense":100, "fhr":10, "ias":20, "damage_to_mana":12, "life":40, "all_resist":11, "fire_resist":30, "cold_resist":30,
   "lightning_resist":30, "poison_resist":30, "attack_rating":120,
   "poison_length_reduced":25,
  }
@@ -163,11 +163,11 @@ BUILD_PROFILES = {
  "melee": {
   # Melee values offensive stats most, while retaining defensive stats as
   # useful secondary affixes rather than treating them as unusable.
-  "attack_rating":1.00,"life_leech":0.95,"mana_leech":0.70,
+  "attack_rating":1.00,"min_damage":1.00,"max_damage":1.00,\n  "life_leech":0.95,"mana_leech":0.70,"ias":0.90,
   "strength":0.90,"dexterity":0.85,"life":0.70,
   "all_resist":0.65,"lightning_resist":0.50,"fire_resist":0.45,
   "cold_resist":0.40,"poison_resist":0.30,"mana":0.20,
-  "mana_per_kill":0.20,"fcr":0.15,
+  "mana_per_kill":0.20,"fcr":0.15,"damage_reduced":0.20,"magic_damage_reduced":0.20,\n  "defense":0.15,"fhr":0.20,"life_replenish":0.15,
  },
  "general_caster": {
   "fcr":1.00,"mana":0.85,"mana_per_kill":0.80,"all_resist":0.80,
@@ -340,7 +340,7 @@ def extract_ring_properties(title: str, visible_text: str) -> dict[str,Any] | No
   if matches:
    # Blood craft Life Leech and Strength may be merged with random affixes.
    stats[key]=(sum(int(m.group(1)) for m in matches)
-               if key in {"life_leech", "strength"} else int(matches[0].group(1)))
+               if key in {"life_leech", "strength", "life"} else int(matches[0].group(1)))
  blood_candidate=stats.get("life_leech",0)>0
  fcr=stats.get("fcr")
  score,reasons=score_ring_stats(stats)
