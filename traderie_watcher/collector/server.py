@@ -377,6 +377,9 @@ class Handler(BaseHTTPRequestHandler):
        phase2_pool.append(candidate)
       phase2_build_results.append({
        "build":build,"target_fit_score":target_fit,
+       "fcr_segment":("10_fcr" if int(target.get("fcr",0))==10 else "non_fcr"),
+       "fcr_segment_candidate_count":sum(1 for x in comps if int(x["stats"].get("fcr",0))==int(target.get("fcr",0))),
+       "opposite_fcr_segment_excluded":sum(1 for x in comps if int(x["stats"].get("fcr",0))!=int(target.get("fcr",0))),
        "eligible_sale_count":len(build_sales),
        "selected_sales":[{"observation_id":x["observation_id"],
         "sale_build_fit":x["sale_build_fit"],"distance":x["build_distance"],
@@ -480,7 +483,8 @@ class Handler(BaseHTTPRequestHandler):
        "build_match_weight":round(x.get("build_match_weight",1.0),4),
        "quality_ratio":round(x["quality_ratio"],4),"weight":round(x["combined_weight"],4),
        "stats":x["stats"],"quality_score":x["heuristic_score"],
-       "quality_gap":x["quality_gap"],"distance_components":x["distance_components"]}
+       "quality_gap":x["quality_gap"],"distance_components":x["distance_components"],
+        "build_distance_components":x.get("build_distance_components",{})}
        for x in adjusted],
       "closest_candidates":[{"observation_id":x["observation_id"],
        "price_display":format_pskull_value(x["value"]),"stats":x["stats"],
