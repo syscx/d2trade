@@ -335,7 +335,7 @@ class ClassSpecificBuildProfileTests(unittest.TestCase):
 
     def test_mana_per_kill_is_parsed_and_supports_caster(self):
         item = extract_ring_properties("Rare Ring",
-            "+10% Faster Cast Rate\\n+50 to Mana\\n+3 Mana after Each Kill")
+            "+10% Faster Cast Rate\n+50 to Mana\n+3 Mana after Each Kill")
         self.assertEqual(item["stats"]["mana_per_kill"], 3)
         from ring_analysis import build_demand_analysis
         demand = build_demand_analysis(item["stats"])
