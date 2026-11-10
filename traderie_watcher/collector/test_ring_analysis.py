@@ -367,6 +367,33 @@ class ClassSpecificBuildProfileTests(unittest.TestCase):
         self.assertGreaterEqual(len(builds), 2)
 
 
+class DirectionalComparablePenaltyTests(unittest.TestCase):
+    def test_target_stronger_than_sale_has_no_directional_penalty(self):
+        from server import directional_sale_penalty
+        result = directional_sale_penalty(72, 55)
+        self.assertEqual(result["weaker_by"], 0.0)
+        self.assertEqual(result["penalty"], 1.0)
+
+    def test_target_up_to_ten_points_weaker_has_no_directional_penalty(self):
+        from server import directional_sale_penalty
+        result = directional_sale_penalty(60, 70)
+        self.assertEqual(result["excess"], 0.0)
+        self.assertEqual(result["penalty"], 1.0)
+
+    def test_target_more_than_ten_points_weaker_is_penalized(self):
+        from server import directional_sale_penalty
+        result = directional_sale_penalty(60, 80)
+        self.assertEqual(result["weaker_by"], 20.0)
+        self.assertEqual(result["excess"], 10.0)
+        self.assertLess(result["penalty"], 1.0)
+
+    def test_penalty_grows_as_sale_becomes_stronger_than_target(self):
+        from server import directional_sale_penalty
+        moderate = directional_sale_penalty(60, 75)["penalty"]
+        large = directional_sale_penalty(60, 90)["penalty"]
+        self.assertLess(large, moderate)
+
+
 class RuneValueDisplayTests(unittest.TestCase):
     def test_values_above_two_ist_show_remainder_in_pskulls(self):
         self.assertEqual(format_pskull_value(39), "2 Ist + 9 Pskulls")
