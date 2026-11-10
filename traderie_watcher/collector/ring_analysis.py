@@ -222,7 +222,7 @@ BUILD_TARGETS = {
  "sorceress": {"fcr":10,"mana":35,"mana_per_kill":1,"all_resist":8,"lightning_resist":20},
  "es_sorceress": {"fcr":10,"mana":35,"poison_resist":20,"poison_length_reduced":25,"strength":5,"dexterity":10},
  "melee": {"life_leech":3,"strength":5,"dexterity":10,"attack_rating":80,"all_resist":8},
- "general_caster": {"fcr":10,"mana":35,"mana_per_kill":2,"all_resist":8,"life":15},
+ "general_caster": {"fcr":10,"mana":35,"mana_per_kill":1,"all_resist":8,"life":15},
 }
 
 def build_recommendation(stats: dict[str, int]) -> dict[str, Any]:
