@@ -333,10 +333,16 @@ class ClassSpecificBuildProfileTests(unittest.TestCase):
             self.assertNotIn("life_leech", demand["profiles"][profile]["useful_stats"])
             self.assertNotIn("mana_leech", demand["profiles"][profile]["useful_stats"])
 
+    def test_mana_per_kill_ring_affix_maximum_is_one(self):
+        from ring_analysis import _affix_roll_quality
+        roll, explanation = _affix_roll_quality("mana_per_kill", 1)
+        self.assertEqual(roll, 1.0)
+        self.assertIn("maximum 1", explanation)
+
     def test_mana_per_kill_is_parsed_and_supports_caster(self):
         item = extract_ring_properties("Rare Ring",
-            "+10% Faster Cast Rate\n+50 to Mana\n+3 Mana after Each Kill")
-        self.assertEqual(item["stats"]["mana_per_kill"], 3)
+            "+10% Faster Cast Rate\n+50 to Mana\n+1 Mana after Each Kill")
+        self.assertEqual(item["stats"]["mana_per_kill"], 1)
         from ring_analysis import build_demand_analysis
         demand = build_demand_analysis(item["stats"])
         self.assertGreater(demand["profiles"]["sorceress"]["score"], 0)
