@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, urljoin
 from jewel_analysis import analyze_listing, comparable_offer_summary, parse_rune_request
-from ring_analysis import extract_ring_properties, score_ring_stats, ring_quality_gap, build_demand_analysis
+from ring_analysis import extract_ring_properties, score_ring_stats, ring_quality_gap, build_demand_analysis, build_recommendation
 from valuation import rune_bundle_value_pskulls, format_pskull_value
 
 ROOT=Path(__file__).resolve().parent
@@ -212,6 +212,7 @@ class Handler(BaseHTTPRequestHandler):
     if not visible.strip(): raise ValueError("visible_text is required")
     analysis=extract_ring_properties(title,visible)
     if not analysis: raise ValueError("input does not look like a ring")
+    analysis["build_recommendation"]=build_recommendation(analysis["stats"])
     # Completed-sale page records are automatically usable market evidence.
     # Their 90% reliability is a statistical weight, not a 10% price discount.
     from jewel_analysis import parse_rune_request
