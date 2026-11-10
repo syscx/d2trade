@@ -332,6 +332,7 @@ class Handler(BaseHTTPRequestHandler):
     phase="phase_1_direct_sales" if phase1_selected else "phase_2_build_specific"
     phase2_build_results=[]
     phase2_pool=[]
+    phase2_build_matched=False
     if phase1_selected:
      selected=phase1_selected
      phase_reason=(f"Phase 1 qualified: {len(close)} completed Blood Ring sales "
@@ -366,6 +367,7 @@ class Handler(BaseHTTPRequestHandler):
        "reason":("Matched completed sales whose stats also fit this build; "
                  "ranking uses ring-stat distance and similarity of build-fit scores.")
       })
+     phase2_build_matched=bool(phase2_pool)
      # Deduplicate sales across overlapping builds, retaining their strongest
      # build match while recording all matching audiences.
      dedup={}
@@ -378,6 +380,7 @@ class Handler(BaseHTTPRequestHandler):
        prior["also_matches"]=sorted(set(prior.get("also_matches",[])+[item["build"]]))
      selected=sorted(dedup.values(),key=lambda x:x["build_distance"])[:20]
      if not selected:
+      phase="phase_2_nearest_sales_fallback"
       # Keep nearest completed sales as a low-confidence fallback even when
       # profiles are weak or the historical sample lacks enough parsed stats.
       selected=comps[:5]
@@ -402,9 +405,12 @@ class Handler(BaseHTTPRequestHandler):
      if phase1_selected:
       method="phase_1_direct_completed_sales"
       confidence="high" if len(close)>=5 and sum(x["combined_weight"] for x in adjusted)>=1.5 else "medium"
-     else:
+     elif phase2_build_matched:
       method="phase_2_build_specific_completed_sales"
       confidence="medium" if len(adjusted)>=3 and sum(x["combined_weight"] for x in adjusted)>=0.8 else "low"
+     else:
+      method="phase_2_nearest_sales_without_build_match"
+      confidence="low"
     else:
      # No priced completed sale can support a market estimate. Retain a
      # transparent heuristic anchor, but mark it explicitly as uncalibrated.
