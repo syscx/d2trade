@@ -176,13 +176,13 @@ class BloodRingTests(unittest.TestCase):
 
     def test_quality_below_65_is_always_poor_stat_combination(self):
         item = extract_ring_properties("Blood Ring",
-            "1% Life Stolen Per Hit\\n+10 to Life\\n+1 to Strength\\n+5 to Mana")
+            "1% Life Stolen Per Hit\n+10 to Life\n+1 to Strength\n+5 to Mana")
         self.assertLess(item["quality_score_percent"], 65)
         self.assertTrue(item["poor_stat_combination"])
 
     def test_quality_at_or_above_65_keeps_existing_poor_combo_rules(self):
         item = extract_ring_properties("Blood Ring",
-            "3% Life Stolen Per Hit\\n+20 to Life\\n+5 to Strength\\n10% Faster Cast Rate")
+            "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n10% Faster Cast Rate")
         if item["quality_score_percent"] >= 65:
             self.assertFalse(item["poor_stat_combination"])
 
@@ -278,7 +278,7 @@ class BuildRecommendationTests(unittest.TestCase):
 class EnergyShieldSorceressTests(unittest.TestCase):
     def test_extracts_poison_length_reduction(self):
         item = extract_ring_properties("Rare Ring",
-            "10% Faster Cast Rate\\n+50 to Mana\\nPoison Length Reduced by 25%")
+            "10% Faster Cast Rate\n+50 to Mana\nPoison Length Reduced by 25%")
         self.assertEqual(item["stats"]["poison_length_reduced"], 25)
 
     def test_es_sorceress_recommended_for_fcr_mana_poison_defense_ring(self):
