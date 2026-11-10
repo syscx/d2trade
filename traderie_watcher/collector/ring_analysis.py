@@ -37,7 +37,7 @@ RANDOM_AFFIX_KEYS = (
 # Relative market usefulness of a perfect roll. FCR is the benchmark.
 # These are transparent initial heuristics, not fitted market coefficients.
 AFFIX_IMPORTANCE = {
- "fcr":1.00, "mana_leech":0.90, "all_resist":0.85,
+ "fcr":1.00, "mana_leech":0.90, "all_resist":0.85, "mana_per_kill":0.55,
  "fire_resist":0.85, "cold_resist":0.60, "lightning_resist":0.85, "poison_resist":0.50, "poison_length_reduced":0.35,
  "dexterity":0.75, "mana":0.55, "attack_rating":0.45,
  "life_replenish":0.00, "magic_find":0.20, "gold_find":0.08,
@@ -124,35 +124,41 @@ def score_ring_stats(stats: dict[str, int]) -> tuple[float, list[str]]:
 # collected sales rather than treated as established market coefficients.
 BUILD_PROFILES = {
  "javazon": {
-  "fcr":1.00,"mana_leech":0.90,"all_resist":0.95,"attack_rating":0.85,
-  "dexterity":0.80,"strength":0.65,"life_leech":0.25,"life":0.35,
-  "mana":0.35,"fire_resist":0.55,"cold_resist":0.45,
-  "lightning_resist":0.65,"poison_resist":0.30,
+  # Lightning Javazon: Sunder-related resistance pressure makes lightning
+  # resistance more valuable than fire resistance for this profile.
+  "fcr":1.00,"mana_leech":0.90,"lightning_resist":1.00,"all_resist":0.90,
+  "attack_rating":0.80,"dexterity":0.75,"strength":0.55,"life":0.40,
+  "mana_per_kill":0.35,"fire_resist":0.25,"cold_resist":0.30,"poison_resist":0.20,
+  "life_leech":0.10,"mana":0.25,
  },
  "sorceress": {
-  "fcr":1.00,"mana":0.90,"mana_leech":0.85,"all_resist":0.80,
-  "fire_resist":0.60,"cold_resist":0.60,"lightning_resist":0.75,
-  "poison_resist":0.35,"dexterity":0.45,"strength":0.20,
-  "life":0.55,"life_leech":0.05,"attack_rating":0.02,
+  # Ordinary spellcaster: leech requires physical attack damage and is not
+  # counted as useful caster demand. Mana per Kill is preferred instead.
+  "fcr":1.00,"mana":0.90,"mana_per_kill":0.85,"all_resist":0.80,
+  "lightning_resist":0.70,"fire_resist":0.60,"cold_resist":0.60,
+  "poison_resist":0.45,"life":0.55,"dexterity":0.35,"strength":0.20,
+  "mana_leech":0.0,"life_leech":0.0,"attack_rating":0.0,
  },
  "es_sorceress": {
-  # FCR is a hard gate in this ring-specific profile; other gear may
-  # complete the character breakpoint, but this user-defined target wants FCR on the ring.
   "fcr":1.00,"mana":1.00,"poison_resist":0.95,
   "poison_length_reduced":0.90,"strength":0.45,"dexterity":0.50,
-  "all_resist":0.10,"life":0.10,"lightning_resist":0.10,
+  "mana_per_kill":0.75,"all_resist":0.10,"life":0.10,
+  "mana_leech":0.0,"life_leech":0.0,"lightning_resist":0.10,
  },
  "melee": {
-  "fcr":0.20,"life_leech":0.95,"strength":0.90,"dexterity":0.85,
-  "attack_rating":0.95,"all_resist":0.80,"life":0.75,
-  "fire_resist":0.55,"cold_resist":0.45,"lightning_resist":0.65,
-  "poison_resist":0.30,"mana_leech":0.55,"mana":0.20,
+  # Melee values offensive stats most, while retaining defensive stats as
+  # useful secondary affixes rather than treating them as unusable.
+  "attack_rating":1.00,"life_leech":0.95,"mana_leech":0.70,
+  "strength":0.90,"dexterity":0.85,"life":0.70,
+  "all_resist":0.65,"lightning_resist":0.50,"fire_resist":0.45,
+  "cold_resist":0.40,"poison_resist":0.30,"mana":0.20,
+  "mana_per_kill":0.20,"fcr":0.15,
  },
  "general_caster": {
-  "fcr":1.00,"mana":0.85,"mana_leech":0.75,"all_resist":0.80,
-  "fire_resist":0.60,"cold_resist":0.60,"lightning_resist":0.75,
-  "poison_resist":0.35,"dexterity":0.45,"strength":0.25,
-  "life":0.55,"life_leech":0.05,"attack_rating":0.02,
+  "fcr":1.00,"mana":0.85,"mana_per_kill":0.80,"all_resist":0.80,
+  "lightning_resist":0.70,"fire_resist":0.60,"cold_resist":0.60,
+  "poison_resist":0.45,"life":0.55,"dexterity":0.35,"strength":0.20,
+  "mana_leech":0.0,"life_leech":0.0,"attack_rating":0.0,
  },
 }
 
@@ -164,31 +170,40 @@ def _profile_roll_quality(key: str, value: int) -> float:
   return _clamp((value - 10.0) / 10.0)
  if key == "strength":
   return _clamp(value / 5.0)
+ if key == "mana_per_kill":
+  return _clamp(value / 3.0)
  return max(0.0, _affix_roll_quality(key, int(value))[0])
 
 def build_demand_analysis(stats: dict[str, int]) -> dict[str, Any]:
- """Score the ring for each audience and summarize breadth of build demand."""
+ """Score every overlapping build audience; profiles are not exclusive labels."""
  scores = {}
  for profile, weights in BUILD_PROFILES.items():
   if profile == "es_sorceress" and stats.get("fcr") != 10:
-   scores[profile] = {"score": 0.0, "useful_stats": [], "blocked_reason": "requires 10 FCR on the ring"}
+   scores[profile] = {"score": 0.0, "useful_stats": [],
+                      "blocked_reason": "requires 10 FCR on the ring"}
    continue
   candidates = []
   for key, weight in weights.items():
    if key in stats and weight > 0:
-    candidates.append((_profile_roll_quality(key, int(stats[key])) * weight, weight, key))
-  # Compare the best four available affixes against the best four possible
-  # weights for that profile, so missing irrelevant stats do not hurt it.
-  candidates.sort(reverse=True)
+    candidates.append((_profile_roll_quality(key, int(stats[key])) * weight,
+                       weight, key, int(stats[key])))
+  candidates.sort(key=lambda item: item[0], reverse=True)
   selected = candidates[:4]
-  denominator = sum(sorted(weights.values(), reverse=True)[:4]) or 1.0
+  denominator = sum(sorted([w for w in weights.values() if w > 0],
+                            reverse=True)[:4]) or 1.0
   score = 100.0 * sum(item[0] for item in selected) / denominator
   scores[profile] = {
-   "score": round(max(0.0, min(100.0, score)), 2),
+   "score": round(_clamp(score, 0.0, 100.0), 2),
    "useful_stats": [item[2] for item in selected],
+   "stat_contributions": [
+    {"stat": item[2], "value": item[3], "weight": item[1],
+     "normalized_roll": round(_profile_roll_quality(item[2], item[3]), 3),
+     "contribution": round(item[0], 3)}
+    for item in selected
+   ],
   }
  ranked = sorted(scores.items(), key=lambda item: item[1]["score"], reverse=True)
- viable = [name for name, result in ranked if result["score"] >= 45.0]
+ viable = [name for name, result in ranked if result["score"] >= 40.0]
  return {
   "profiles": scores,
   "ranked_profiles": [name for name, _ in ranked],
@@ -199,37 +214,42 @@ def build_demand_analysis(stats: dict[str, int]) -> dict[str, Any]:
   "demand_tier": ("broad" if len(viable) >= 3 else
                   "multi_build" if len(viable) == 2 else
                   "niche" if len(viable) == 1 else "weak"),
-}
+ }
 
-# Practical roll targets used by the recommendation explainer.
-# These are initial D2R ring heuristics, not claims about every build or market.
 BUILD_TARGETS = {
- "javazon": {"fcr":10,"mana_leech":4,"all_resist":8,"attack_rating":80,"dexterity":10},
- "sorceress": {"fcr":10,"mana":35,"mana_leech":4,"all_resist":8,"lightning_resist":20},
+ "javazon": {"fcr":10,"mana_leech":4,"lightning_resist":20,"all_resist":8,"attack_rating":80},
+ "sorceress": {"fcr":10,"mana":35,"mana_per_kill":2,"all_resist":8,"lightning_resist":20},
  "es_sorceress": {"fcr":10,"mana":35,"poison_resist":20,"poison_length_reduced":25,"strength":5,"dexterity":10},
  "melee": {"life_leech":3,"strength":5,"dexterity":10,"attack_rating":80,"all_resist":8},
- "general_caster": {"fcr":10,"mana":35,"mana_leech":4,"all_resist":8,"life":15},
+ "general_caster": {"fcr":10,"mana":35,"mana_per_kill":2,"all_resist":8,"life":15},
 }
 
 def build_recommendation(stats: dict[str, int]) -> dict[str, Any]:
- """Return the best-fit audience and actionable gaps against its target rolls."""
+ """Return overlapping build audiences and explain their strongest stat matches."""
  demand = build_demand_analysis(stats)
  ranked = demand["ranked_profiles"]
  best = demand["best_profile"]
  score = float(demand["best_score"])
- # A high profile score alone is not enough: require at least 60% of
- # that profile's explicit target rolls. This prevents two generic stats
- # (e.g. STR + DEX) from forcing a misleading class recommendation.
- candidate_target = BUILD_TARGETS.get(best, {}) if best else {}
- candidate_met = sum(1 for key, minimum in candidate_target.items()
-                     if stats.get(key) is not None and stats[key] >= minimum)
- target_coverage = candidate_met / len(candidate_target) if candidate_target else 0.0
- recommended = best if score >= 45.0 and target_coverage >= 0.60 else None
- if recommended == "es_sorceress" and stats.get("fcr") != 10:
-  recommended = None
- # Keep the best candidate's target gaps visible even when confidence is
- # insufficient to recommend that build.
- target = candidate_target
+ recommendations = []
+ for name in demand["viable_profiles"]:
+  profile_result = demand["profiles"][name]
+  targets = BUILD_TARGETS.get(name, {})
+  met = [key for key, minimum in targets.items()
+         if stats.get(key) is not None and stats[key] >= minimum]
+  coverage = len(met) / len(targets) if targets else 0.0
+  # A high fit score with some target coverage is enough to show a recommendation.
+  # Overlapping audiences are intentional; do not force a single winner.
+  if profile_result["score"] >= 40.0 and coverage >= 0.20:
+   recommendations.append({
+    "build": name, "fit_score": profile_result["score"],
+    "target_coverage": round(coverage, 3),
+    "useful_stats": profile_result.get("useful_stats", []),
+    "stat_contributions": profile_result.get("stat_contributions", []),
+    "met_targets": met,
+   })
+ recommendations.sort(key=lambda item: item["fit_score"], reverse=True)
+ candidate = recommendations[0]["build"] if recommendations else best
+ target = BUILD_TARGETS.get(candidate, {}) if candidate else {}
  met = []
  missing = []
  below = []
@@ -242,37 +262,33 @@ def build_recommendation(stats: dict[str, int]) -> dict[str, Any]:
   else:
    below.append({"stat": key, "actual": actual, "target": minimum,
                  "gap": minimum - actual})
- if recommended:
-  summary = (f"Best fit: {recommended.replace('_', ' ').title()} "
-             f"({score:.1f}/100 heuristic fit).")
- else:
-  summary = (f"No recommendation: best candidate is {best} ({score:.1f}/100), "
-             f"but only {candidate_met}/{len(candidate_target)} target rolls are met; "
-             "minimum is 60%.") if best and candidate_target else "No clear build recommendation: no profile reached the 45/100 fit threshold."
  return {
-  "recommended_build": recommended,
+  "recommended_build": candidate if recommendations else None,
+  "recommendations": recommendations,
   "best_candidate": best,
   "fit_score": round(score, 2),
-  "target_coverage": round(target_coverage, 3),
-  "recommendation_minimum_target_coverage": 0.60,
+  "target_coverage": round(len(met) / len(target), 3) if target else 0.0,
   "confidence": "heuristic",
   "demand_tier": demand["demand_tier"],
+  "viable_profiles": demand["viable_profiles"],
   "ranked_profiles": [
    {"build": name, "fit_score": demand["profiles"][name]["score"],
     "useful_stats": demand["profiles"][name]["useful_stats"]}
    for name in ranked
   ],
   "target_benchmark": {
-   "targets": target,
-   "met": met,
-   "below_target": below,
-   "missing": missing,
-   "completion_count": len(met),
+   "targets": target, "met": met, "below_target": below,
+   "missing": missing, "completion_count": len(met),
    "target_count": len(target),
   },
-  "summary": summary,
-  "caveat": "Build weights and target rolls are initial heuristics; validate them against actual build guides and completed-sale data. ES Sorceress FCR is a ring-profile hard gate requested by the user; the character FCR breakpoint is reached across all equipped gear.",
- }
+  "summary": (
+   "Matching build audiences: " + ", ".join(x["build"] for x in recommendations)
+   if recommendations else
+   ("No build profile reached the recommendation threshold; fallback remains quality-based."
+    if best else "No build profile could be evaluated.")
+  ),
+  "caveat": "Build weights and target rolls are transparent initial heuristics, not market-trained prices. Mana/life leech have zero ordinary-caster demand weight; Lightning Javazon prioritizes lightning resistance. ES Sorceress requires 10 FCR on the ring.",
+}
 
 def ring_quality_features(stats: dict[str,int]) -> set[str]:
  thresholds={"mana_leech":4,"life_leech":3,"dexterity":5,"strength":5,"life":15,"attack_rating":100,"all_resist":10}
