@@ -15,7 +15,7 @@ PREFIX_AFFIXES = [
     ("cold_resist", lambda r: f"+{r.randint(1, 30)}% to Cold Resistance"),
     ("lightning_resist", lambda r: f"+{r.randint(1, 30)}% to Lightning Resistance"),
     ("poison_resist", lambda r: f"+{r.randint(1, 30)}% to Poison Resistance"),
-    ("attack_rating", lambda r: f"+{r.randint(1, 120)} to Attack Rating"),
+    ("attack_rating", lambda r: f"+{r.randint(1, 100)} to Attack Rating"),
 ]
 SUFFIX_AFFIXES = [
     ("fcr", lambda r: "10% Faster Cast Rate"),
