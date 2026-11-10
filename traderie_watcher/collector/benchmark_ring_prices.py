@@ -51,10 +51,10 @@ HIGH_FCR_CASES = (
 # Class-specific cases: ordinary casters favor Mana per Kill and must not
 # receive demand credit for leech; Lightning Javazon favors lightning res.
 CLASS_PROFILE_CASES = (
-    ("caster_mana_per_kill", "3% Life Stolen Per Hit\\n+20 to Life\\n+5 to Strength\\n"
-     "10% Faster Cast Rate\\n+50 to Mana\\n+3 Mana after Each Kill\\n+11 to All Resistances"),
-    ("lightning_javazon", "3% Life Stolen Per Hit\\n+20 to Life\\n+5 to Strength\\n"
-     "10% Faster Cast Rate\\n6% Mana Stolen Per Hit\\n+30% to Lightning Resistance\\n+11 to All Resistances"),
+    ("caster_mana_per_kill", "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n"
+     "10% Faster Cast Rate\n+50 to Mana\n+3 Mana after Each Kill\n+11 to All Resistances"),
+    ("lightning_javazon", "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n"
+     "10% Faster Cast Rate\n6% Mana Stolen Per Hit\n+30% to Lightning Resistance\n+11 to All Resistances"),
 )
 
 
