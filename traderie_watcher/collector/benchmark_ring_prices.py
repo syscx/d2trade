@@ -145,6 +145,11 @@ def main() -> int:
             print(f"  {build.get('build')}: target fit={build.get('target_fit_score')}; "
                   f"eligible build sales={build.get('eligible_sale_count')}")
         print(f"Valuation explanation: {valuation.get('diagnostics', {}).get('note')}")
+        recommendation = valuation.get("diagnostics", {}).get("build_recommendation", {})
+        for match in recommendation.get("recommendations", []):
+            print(f"  Build fit: {match.get('build')}={match.get('fit_score')}/100 "
+                  f"targets={match.get('target_coverage')}; "
+                  f"stats={match.get('useful_stats')}")
         for comparable in valuation.get("comparables", [])[:5]:
             print(
                 "  comparable: "
