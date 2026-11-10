@@ -37,11 +37,11 @@ MEDIUM_CASES = (
      "3% Mana Stolen Per Hit\n+12 to Dexterity\n+12% to Lightning Resistance\n+40 to Mana"),
 )
 
-# All three have 10 FCR and strong complementary rolls. These are designed
+# All three have 10 FCR and strong complementary rolls. All Resistance is capped at 11. These are designed
 # high-score examples to test the premium-comparable path.
 HIGH_FCR_CASES = (
     ("high_fcr_1", "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n"
-     "10% Faster Cast Rate\n6% Mana Stolen Per Hit\n+15 to Dexterity\n+20 to All Resistances"),
+     "10% Faster Cast Rate\n6% Mana Stolen Per Hit\n+15 to Dexterity\n+11 to All Resistances"),
     ("high_fcr_2", "3% Life Stolen Per Hit\n+19 to Life\n+5 to Strength\n"
      "10% Faster Cast Rate\n6% Mana Stolen Per Hit\n+15 to Dexterity\n+50 to Mana"),
     ("high_fcr_3", "3% Life Stolen Per Hit\n+20 to Life\n+4 to Strength\n"
