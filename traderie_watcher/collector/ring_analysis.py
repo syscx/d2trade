@@ -13,7 +13,7 @@ PATTERNS = {
  "life_leech":[r"(\d{1,2})\s*%?\s*life\s+(?:stolen|leech)\s+per\s+hit",r"(\d{1,2})\s*%?\s*life\s+leech"],
  "mana_leech":[r"(\d{1,2})\s*%?\s*mana\s+(?:stolen|leech)\s+per\s+hit",r"(\d{1,2})\s*%?\s*mana\s+leech"],
  "life":[r"[+]?([\d]{1,3})\s+to\s+life\b"],
- "strength":[r"[+]?([\d]{1,2})\s+to\s+strength\b"],
+  "strength":[r"[+]?([\d]{1,3})\s+to\s+strength\b"],
  "dexterity":[r"[+]?([\d]{1,2})\s+to\s+dexterity\b"],
  "all_resist":[r"[+]?([\d]{1,2})\s+to\s+all\s+resistances?\b"],
  "fire_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?fire\s+resist"],
