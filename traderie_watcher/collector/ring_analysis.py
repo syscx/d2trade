@@ -20,6 +20,7 @@ PATTERNS = {
  "cold_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?cold\s+resist"],
  "lightning_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?lightning\s+resist"],
  "poison_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?poison\s+resist"],
+ "poison_length_reduced":[r"poison\s+length\s+reduced\s+by\s+(\d{1,3})\s*%"],
  "mana":[r"[+]?([\d]{1,3})\s+to\s+mana\b"],
  "attack_rating":[r"[+]?([\d]{1,3})\s+to\s+attack\s+rating\b"],
  "magic_find":[r"(\d{1,2})\s*%?\s*better\s+chance\s+of\s+getting\s+magic\s+items?"],
@@ -169,6 +170,9 @@ def build_demand_analysis(stats: dict[str, int]) -> dict[str, Any]:
  """Score the ring for each audience and summarize breadth of build demand."""
  scores = {}
  for profile, weights in BUILD_PROFILES.items():
+  if profile == "es_sorceress" and stats.get("fcr") != 10:
+   scores[profile] = {"score": 0.0, "useful_stats": [], "blocked_reason": "requires 10 FCR on the ring"}
+   continue
   candidates = []
   for key, weight in weights.items():
    if key in stats and weight > 0:
