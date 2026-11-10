@@ -116,12 +116,23 @@ def main() -> int:
         print(f"Poor stat combination: {analysis.get('poor_stat_combination')}")
         print(f"Price: {valuation.get('low')} / {valuation.get('median')} / "
               f"{valuation.get('high')} Pskulls (low / median / high)")
+        print(f"Ring status: {analysis.get('craft_type')} | quality={analysis.get('quality_score_percent')}/100")
+        print(f"Valuation phase: {valuation.get('valuation_phase')} | Phase 1 rate={valuation.get('phase1_rate')}")
         print(f"Method: {valuation.get('valuation_method')}")
         print(f"Confidence: {valuation.get('confidence')}")
         print(f"Completed-sale comparables: {valuation.get('comparable_sales')} "
               f"(eligible: {valuation.get('eligible_comparable_sales')})")
         print(f"Close matches: {diagnostics.get('close_comparables')}; "
               f"distant matches: {diagnostics.get('rejected_by_distance')}")
+        explanation = valuation.get("diagnostics", {}).get("phase_explanation", {})
+        print(f"Why this phase: {explanation.get('reason')}")
+        build_demand = valuation.get("diagnostics", {}).get("build_demand", {})
+        print(f"Build demand tier: {build_demand.get('demand_tier')} | "
+              f"matching builds: {build_demand.get('viable_profiles')}")
+        for build in valuation.get("diagnostics", {}).get("phase_explanation", {}).get("phase2", {}).get("builds_evaluated", []):
+            print(f"  {build.get('build')}: target fit={build.get('target_fit_score')}; "
+                  f"eligible build sales={build.get('eligible_sale_count')}")
+        print(f"Valuation explanation: {valuation.get('diagnostics', {}).get('note')}")
         for comparable in valuation.get("comparables", [])[:5]:
             print(
                 "  comparable: "
