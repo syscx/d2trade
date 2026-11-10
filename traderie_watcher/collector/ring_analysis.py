@@ -119,11 +119,14 @@ def score_ring_stats(stats: dict[str, int]) -> tuple[float, list[str]]:
   points=roll*importance*21.25
   affix_score+=points+bonus
   bonus_note=f"; perfect-roll bonus +{bonus:.2f}" if bonus else ""
-  reasons.append(
-   f"{key} affix={value} (combined stat {stats[key]}): "
-   f"{points+bonus:+.2f}/21.25 (base {points:.2f}; importance "
-   f"{importance:.2f}{bonus_note}; {explanation})"
-  )
+  if importance <= 0:
+   reasons.append(f"{key}={stats[key]}: +0.00 (zero market importance; excluded from quality score)")
+  else:
+   reasons.append(
+    f"{key} affix={value} (combined stat {stats[key]}): "
+    f"{points+bonus:+.2f}/21.25 (base {points:.2f}; importance "
+    f"{importance:.2f}{bonus_note}; {explanation})"
+   )
  for slot in range(4-len(chosen)):
   reasons.append(f"Empty random affix slot {slot+1}: 0/21.25")
  total=max(0.0,min(100.0,fixed_score+affix_score))
@@ -213,7 +216,15 @@ def build_demand_analysis(stats: dict[str, int]) -> dict[str, Any]:
     for item in selected
    ],
   }
- ranked = sorted(scores.items(), key=lambda item: item[1]["score"], reverse=True)
+ # Mana per Kill is a caster signal; use it only to break exact score ties.
+ ranked = sorted(
+  scores.items(),
+  key=lambda item: (
+   item[1]["score"],
+   1 if item[0] in {"sorceress", "general_caster"} and stats.get("mana_per_kill", 0) > 0 else 0,
+  ),
+  reverse=True,
+ )
  viable = [name for name, result in ranked if result["score"] >= 40.0]
  return {
   "profiles": scores,
