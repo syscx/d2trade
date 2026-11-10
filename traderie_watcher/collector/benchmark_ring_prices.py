@@ -1,4 +1,4 @@
-"""Benchmark seven synthetic Blood Rings against the local completed-sale database.
+"""Benchmark twelve synthetic Blood Rings against the local completed-sale database.
 
 Coverage:
 - 2 deterministic random rings
@@ -52,9 +52,17 @@ HIGH_FCR_CASES = (
 # receive demand credit for leech; Lightning Javazon favors lightning res.
 CLASS_PROFILE_CASES = (
     ("caster_mana_per_kill", "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n"
-     "10% Faster Cast Rate\n+50 to Mana\n+3 Mana after Each Kill\n+11 to All Resistances"),
+     "10% Faster Cast Rate\n+50 to Mana\n+1 Mana after Each Kill\n+11 to All Resistances"),
     ("lightning_javazon", "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n"
      "10% Faster Cast Rate\n6% Mana Stolen Per Hit\n+30% to Lightning Resistance\n+11 to All Resistances"),
+)
+
+
+PHASE2_REGRESSION_CASES = (
+    ("caster_leech_should_not_raise_value", "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n10% Faster Cast Rate\n+50 to Mana\n+1 Mana after Each Kill\n6% Mana Stolen Per Hit"),
+    ("javazon_lightning_res_not_fire", "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n10% Faster Cast Rate\n6% Mana Stolen Per Hit\n+30% to Lightning Resistance\n+11 to All Resistances"),
+    ("javazon_fire_res_only", "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n10% Faster Cast Rate\n6% Mana Stolen Per Hit\n+30% to Fire Resistance\n+11 to All Resistances"),
+    ("non_fcr_melee", "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n+100 to Attack Rating\n+15 to Dexterity\n+11 to All Resistances\n+30% to Lightning Resistance"),
 )
 
 
@@ -95,6 +103,9 @@ def build_cases() -> list[tuple[str, str, int | None, str, str]]:
                       "Blood Ring (SYNTHETIC TEST DATA)", visible_text))
     for name, visible_text in CLASS_PROFILE_CASES:
         cases.append((name, "class_profile", None,
+                      "Blood Ring (SYNTHETIC TEST DATA)", visible_text))
+    for name, visible_text in PHASE2_REGRESSION_CASES:
+        cases.append((name, "phase2_regression", None,
                       "Blood Ring (SYNTHETIC TEST DATA)", visible_text))
     return cases
 
@@ -162,7 +173,7 @@ def main() -> int:
         "benchmark_cases": len(results),
         "category_counts": {
             category: sum(1 for item in results if item["category"] == category)
-            for category in ("random", "medium_score", "high_score_10_fcr", "class_profile")
+            for category in ("random", "medium_score", "high_score_10_fcr", "class_profile", "phase2_regression")
         },
         "results": results,
     }
