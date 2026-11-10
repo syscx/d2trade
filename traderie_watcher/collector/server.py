@@ -253,9 +253,10 @@ class Handler(BaseHTTPRequestHandler):
       other=json.loads(row["stats_json"])
       if other.get("fcr") != target.get("fcr"):
        diagnostics["fcr_mismatch"]+=1
-       continue
+      # FCR mismatch is a distance penalty, not a hard exclusion; different
+      # builds and breakpoint choices can still make a sale informative.
       shared=set(target).intersection(other)
-      if len(shared)<2:
+      if len(shared)<1:
        diagnostics["insufficient_stat_overlap"]+=1
        continue
       # Compare the union, not just shared stats: missing premium stats count as zero.
@@ -263,12 +264,13 @@ class Handler(BaseHTTPRequestHandler):
       union=set(target).union(other)
       stat_weights={"fcr":2.0,"life_leech":1.5,"mana_leech":2.0,"life":1.5,"strength":1.4,"dexterity":1.5,
         "attack_rating":1.0,"all_resist":1.0,"fire_resist":0.8,"cold_resist":0.8,
-        "lightning_resist":0.8,"poison_resist":0.8,"mana":0.7,"magic_find":0.5,"gold_find":0.25}
+        "lightning_resist":0.8,"poison_resist":0.8,"mana":0.7,"mana_per_kill":0.7,"poison_length_reduced":0.6,"magic_find":0.5,"gold_find":0.25}
       distance_parts={}
       for key in union:
        a=float(target.get(key,0)); b=float(other.get(key,0))
        scale=max(abs(a),abs(b),10.0)
        distance_parts[key]=round(abs(a-b)/scale*stat_weights.get(key,1.0),4)
+      if key=="fcr" and a!=b: distance_parts[key]+=0.25
       stat_distance=sum(distance_parts.values())/max(sum(stat_weights.get(k,1.0) for k in union),1.0)
       other_score,_=score_ring_stats(other)
       score_gap=abs(target_score-other_score)
@@ -286,43 +288,33 @@ class Handler(BaseHTTPRequestHandler):
     diagnostics["eligible_before_top_20"]=len(comps)
     MAX_COMPARABLE_DISTANCE=0.55
     close=[x for x in comps if x["distance"] <= MAX_COMPARABLE_DISTANCE]
-    # Phase 1 requires at least three genuinely close completed sales.
-    # Distant sales are not substituted for close matches.
-    selected=close[:20] if len(close)>=3 else []
     diagnostics["distance_threshold"]=MAX_COMPARABLE_DISTANCE
     diagnostics["rejected_by_distance"]=sum(1 for x in comps if x["distance"] > MAX_COMPARABLE_DISTANCE)
     diagnostics["close_comparables"]=len(close)
-    diagnostics["distance_fallback_used"]=bool(comps and len(close)<3)
     diagnostics["sales_phase_qualified"]=len(close)>=3
 
     quality_percent=float(analysis.get("quality_score_percent",target_score))
     poor_combination=bool(analysis.get("poor_stat_combination"))
     build_demand=build_demand_analysis(target)
+    build_recommendation_result=build_recommendation(target)
+    viable_builds=build_demand.get("viable_profiles",[])
     best_build_score=float(build_demand["best_score"])
-    viable_build_count=int(build_demand["viable_profile_count"])
-    # Low-quality cap boundary: only rings below 65 quality, already marked
-    # poor, with no profile reaching 45 and a best profile below 35 are capped.
-    low_quality_cap=(
-      quality_percent < 65.0 and poor_combination and
-      viable_build_count == 0 and best_build_score < 35.0
-    )
-    # If we have any completed sales, let the nearest sales inform the estimate.
-    # Gaussian distance weights rapidly reduce influence from weak matches.
-    adjusted=[]
-    for item in selected:
-     bandwidth=0.65
-     distance_weight=__import__("math").exp(-((item["distance"]/bandwidth)**2))
-     # Quality adjustment is directional: do not price a weaker target like a
-     # premium comparable. Keep the exponent conservative to avoid wild swings.
-     comparable_quality=max(float(item["heuristic_score"]),1.0)
-     target_quality=max(quality_percent,1.0)
-     quality_ratio=max(0.25,min(2.5,target_quality/comparable_quality))
-     adjusted_price=max(0.0,item["value"]*(quality_ratio**0.75))
-     combined_weight=item["weight"]*distance_weight
-     adjusted.append({**item,"distance_weight":distance_weight,
-      "quality_ratio":quality_ratio,"adjusted_price":adjusted_price,
-      "combined_weight":combined_weight})
-    adjusted.sort(key=lambda x:x["adjusted_price"])
+
+    def adjusted_comparables(items):
+     adjusted_rows=[]
+     for item in items:
+      bandwidth=0.65
+      distance_weight=__import__("math").exp(-((item["distance"]/bandwidth)**2))
+      comparable_quality=max(float(item["heuristic_score"]),1.0)
+      target_quality=max(quality_percent,1.0)
+      quality_ratio=max(0.25,min(2.5,target_quality/comparable_quality))
+      adjusted_price=max(0.0,item["value"]*(quality_ratio**0.75))
+      combined_weight=item["weight"]*distance_weight*float(item.get("build_match_weight",1.0))
+      adjusted_rows.append({**item,"distance_weight":distance_weight,
+       "quality_ratio":quality_ratio,"adjusted_price":adjusted_price,
+       "combined_weight":combined_weight})
+     adjusted_rows.sort(key=lambda x:x["adjusted_price"])
+     return adjusted_rows
 
     def weighted_quantile(items,q):
      total=sum(x["combined_weight"] for x in items)
@@ -334,53 +326,126 @@ class Handler(BaseHTTPRequestHandler):
       if running>=threshold: return item["adjusted_price"]
      return items[-1]["adjusted_price"]
 
+    # Phase 1: direct nearest-sale evidence. Three close completed sales are
+    # required, but all eligible sales remain available to Phase 2.
+    phase1_selected=close[:20] if len(close)>=3 else []
+    phase="phase_1_direct_sales" if phase1_selected else "phase_2_build_specific"
+    phase2_build_results=[]
+    phase2_pool=[]
+    if phase1_selected:
+     selected=phase1_selected
+     phase_reason=(f"Phase 1 qualified: {len(close)} completed Blood Ring sales "
+                   f"within distance {MAX_COMPARABLE_DISTANCE}; direct ring similarity is primary.")
+    else:
+     # Phase 2 scores each completed sale against every viable audience for
+     # the target. A sale can support multiple overlapping build profiles.
+     for build in viable_builds:
+      target_fit=float(build_demand["profiles"][build]["score"])
+      build_sales=[]
+      for item in comps:
+       sale_demand=build_demand_analysis(item["stats"])
+       sale_fit=float(sale_demand["profiles"].get(build,{}).get("score",0.0))
+       if sale_fit < 25.0:
+        continue
+       fit_gap=abs(target_fit-sale_fit)/100.0
+       build_distance=float(item["distance"])+fit_gap*0.75
+       match_weight=max(0.05,min(1.0,(sale_fit/100.0)*__import__("math").exp(-fit_gap*2.0)))
+       candidate={**item,"build":build,"target_build_fit":target_fit,
+        "sale_build_fit":sale_fit,"build_distance":round(build_distance,4),
+        "build_match_weight":match_weight}
+       build_sales.append(candidate)
+      build_sales.sort(key=lambda x:x["build_distance"])
+      for candidate in build_sales[:12]:
+       phase2_pool.append(candidate)
+      phase2_build_results.append({
+       "build":build,"target_fit_score":target_fit,
+       "eligible_sale_count":len(build_sales),
+       "selected_sales":[{"observation_id":x["observation_id"],
+        "sale_build_fit":x["sale_build_fit"],"distance":x["build_distance"],
+        "price_pskulls":x["value"]} for x in build_sales[:5]],
+       "reason":("Matched completed sales whose stats also fit this build; "
+                 "ranking uses ring-stat distance and similarity of build-fit scores.")
+      })
+     # Deduplicate sales across overlapping builds, retaining their strongest
+     # build match while recording all matching audiences.
+     dedup={}
+     for item in phase2_pool:
+      key=item["observation_id"]
+      if key not in dedup or item["build_match_weight"]>dedup[key]["build_match_weight"]:
+       dedup[key]=item
+      else:
+       prior=dedup[key]
+       prior["also_matches"]=sorted(set(prior.get("also_matches",[])+[item["build"]]))
+     selected=sorted(dedup.values(),key=lambda x:x["build_distance"])[:20]
+     if not selected:
+      # Keep nearest completed sales as a low-confidence fallback even when
+      # profiles are weak or the historical sample lacks enough parsed stats.
+      selected=comps[:5]
+      phase_reason=("Phase 2 had no completed sales with a sufficiently strong build match; "
+                    "using the nearest available Blood Ring sales as weak fallback evidence.")
+     else:
+      phase_reason=("Phase 1 lacked three close sales. Phase 2 valued the ring using "
+                    "completed sales matching its overlapping build audiences.")
+
+    diagnostics["phase1_close_sales"]=len(close)
+    diagnostics["phase1_required_close_sales"]=3
+    diagnostics["phase2_build_sale_candidates"]=len(phase2_pool)
+    diagnostics["phase2_builds_evaluated"]=len(phase2_build_results)
+    diagnostics["valuation_phase"]=phase
+    diagnostics["sales_phase_qualified"]=bool(phase1_selected)
+
+    adjusted=adjusted_comparables(selected)
     if adjusted:
-     # Phase 1: strong completed-sale evidence always wins over heuristic caps.
      low=weighted_quantile(adjusted,0.25)
      med=weighted_quantile(adjusted,0.50)
      high=weighted_quantile(adjusted,0.75)
-     method="completed_sale_comparables"
-     confidence="high"
-     note="Phase 1: at least three close completed Blood Ring sales (distance <= 0.55). Sales evidence takes priority over heuristic caps. 90% is sale reliability weight, not a price discount."
-    elif low_quality_cap:
-     fallback=max(1.0,min(15.0,quality_percent*0.35))
-     low=max(1.0,fallback*0.75); med=fallback; high=min(15.0,fallback*1.25)
-     method="low_quality_cap"
-     confidence="low"
-     note="Low-quality boundary: quality below 65, poor stat combination, no build profile reaches 45, and best profile score below 35. Conservative estimate capped at 15 Pskulls."
+     if phase1_selected:
+      method="phase_1_direct_completed_sales"
+      confidence="high" if len(close)>=5 and sum(x["combined_weight"] for x in adjusted)>=1.5 else "medium"
+     else:
+      method="phase_2_build_specific_completed_sales"
+      confidence="medium" if len(adjusted)>=3 and sum(x["combined_weight"] for x in adjusted)>=0.8 else "low"
     else:
-     # Phase 2: use build fit and cross-build demand when close sales are scarce.
-     score_anchor=max(1.0,quality_percent*0.35)
-     best_fit=max(0.0,min(1.0,best_build_score/100.0))
-     breadth_bonus=max(0,viable_build_count-1)*0.30
-     demand_multiplier=1.0+max(0.0,best_fit-0.45)*1.25+breadth_bonus
-     fallback=score_anchor*demand_multiplier
-     low=fallback*0.65
-     med=fallback
-     high=fallback*(1.45+0.10*max(0,viable_build_count-1))
-     method="build_aware_fallback"
+     # No priced completed sale can support a market estimate. Retain a
+     # transparent heuristic anchor, but mark it explicitly as uncalibrated.
+     anchor=max(1.0,quality_percent*0.25)
+     demand_multiplier=1.0+max(0.0,best_build_score/100.0-0.40)*0.8
+     breadth_bonus=max(0,len(viable_builds)-1)*0.10
+     med=anchor*(demand_multiplier+breadth_bonus)
+     low=med*0.55
+     high=med*1.65
+     method="build_heuristic_no_sale_evidence"
      confidence="very_low"
-     note=("Phase 2: fewer than three close completed sales. Estimate uses build-profile fit plus a controlled premium for demand across multiple builds. "
-       "Profile weights are initial heuristics, not market-trained prices; recalibrate as completed sales accumulate.")
+     phase_reason += " No usable completed-sale price was available, so this is a heuristic-only estimate."
+
     valuation={"status":"estimate_available","currency":"Pskulls",
      "low":round(low,2),"median":round(med,2),"high":round(high,2),
      "display":{"low":format_pskull_value(low),"median":format_pskull_value(med),"high":format_pskull_value(high)},
-     "comparable_sales":len(selected),"eligible_comparable_sales":len(comps),
+     "comparable_sales":len(adjusted),"eligible_comparable_sales":len(comps),
+     "valuation_phase":phase,"phase1_rate":round(len(close)/max(len(comps),1),3),
+     "phase1_close_sales":len(close),"phase1_required":3,
      "reliability_weight":0.90,"valuation_method":method,"confidence":confidence,
      "quality_score_percent":quality_percent,"poor_stat_combination":poor_combination,
      "effective_weight":round(sum(x["combined_weight"] for x in adjusted),4),
      "diagnostics":{"target_stats":target,"target_quality_score":quality_percent,
       "target_verdict":analysis["verdict"],"counts":diagnostics,
-      "build_demand":build_demand,
+      "build_demand":build_demand,"build_recommendation":build_recommendation_result,
+      "phase_explanation":{"phase":phase,"reason":phase_reason,
+       "phase1":{"close_sales":len(close),"required":3,"distance_threshold":MAX_COMPARABLE_DISTANCE,
+        "qualified":bool(phase1_selected)},
+       "phase2":{"builds_evaluated":phase2_build_results,"build_sale_candidate_count":len(phase2_pool)}},
       "low_quality_cap_boundary":{"quality_below":65,"requires_poor_stat_combination":True,
        "requires_zero_viable_profiles":True,"best_profile_score_below":35},
-      "selection_method":("close completed sales first (minimum 3, distance <= 0.55); otherwise build-profile fit and multi-build demand"),
+      "selection_method":"Phase 1: at least 3 close direct completed sales; Phase 2: build-fit-ranked completed sales when Phase 1 fails; heuristic only when no usable sale prices exist.",
       "selected_comparables":[{"observation_id":x["observation_id"],
        "captured_at":x["captured_at"],"sale_price_pskulls":x["value"],
        "sale_price_display":format_pskull_value(x["value"]),
        "adjusted_price_pskulls":round(x["adjusted_price"],2),
        "adjusted_price_display":format_pskull_value(x["adjusted_price"]),
-       "distance":round(x["distance"],4),"distance_weight":round(x["distance_weight"],4),
+       "distance":round(x.get("build_distance",x["distance"]),4),"distance_weight":round(x["distance_weight"],4),
+       "build":x.get("build"),"also_matches":x.get("also_matches",[]),
+       "target_build_fit":x.get("target_build_fit"),"sale_build_fit":x.get("sale_build_fit"),
+       "build_match_weight":round(x.get("build_match_weight",1.0),4),
        "quality_ratio":round(x["quality_ratio"],4),"weight":round(x["combined_weight"],4),
        "stats":x["stats"],"quality_score":x["heuristic_score"],
        "quality_gap":x["quality_gap"],"distance_components":x["distance_components"]}
@@ -393,7 +458,9 @@ class Handler(BaseHTTPRequestHandler):
     valuation["comparables"]=[{"observation_id":x["observation_id"],
       "sale_price_pskulls":x["value"],"sale_price_display":format_pskull_value(x["value"]),
       "estimated_contribution_pskulls":round(x["adjusted_price"],2),
-      "distance":round(x["distance"],4),"reliability":x["weight"],
+      "distance":round(x.get("build_distance",x["distance"]),4),"build":x.get("build"),
+      "target_build_fit":x.get("target_build_fit"),"sale_build_fit":x.get("sale_build_fit"),
+      "reliability":x["weight"],
       "distance_weight":round(x["distance_weight"],4),"trade_text":x["trade_text"],
       "stats":x["stats"],"quality_score":x["heuristic_score"]} for x in adjusted]
     self._json(200,{"ok":True,"synthetic":bool(payload.get("synthetic",False)),
