@@ -418,6 +418,7 @@ class Handler(BaseHTTPRequestHandler):
      confidence="very_low"
      phase_reason += " No usable completed-sale price was available, so this is a heuristic-only estimate."
 
+    note=phase_reason
     valuation={"status":"estimate_available","currency":"Pskulls",
      "low":round(low,2),"median":round(med,2),"high":round(high,2),
      "display":{"low":format_pskull_value(low),"median":format_pskull_value(med),"high":format_pskull_value(high)},
