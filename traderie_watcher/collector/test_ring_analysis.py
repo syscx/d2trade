@@ -82,7 +82,7 @@ class BloodRingTests(unittest.TestCase):
             "6% Mana Stolen Per Hit")
         self.assertEqual(item["stats"]["mana_leech"], 6)
         score, reasons = score_ring_stats(item["stats"])
-        self.assertTrue(any("mana_leech=6" in reason and "21.25" in reason
+        self.assertTrue(any("mana_leech affix=6" in reason and "21.25" in reason
                             for reason in reasons))
 
     def test_premium_melee_example_scores_attack_rating_dex_strength_and_mpk(self):
@@ -160,8 +160,8 @@ class BloodRingTests(unittest.TestCase):
         from ring_analysis import _perfect_roll_bonus
         self.assertEqual(_perfect_roll_bonus("magic_find", 25), 0.0)
         self.assertEqual(_perfect_roll_bonus("gold_find", 100), 0.0)
-        self.assertEqual(_perfect_roll_bonus("attack_rating", 100), 1.0)
-        self.assertEqual(_perfect_roll_bonus("attack_rating", 120), 0.0)
+        self.assertEqual(_perfect_roll_bonus("attack_rating", 120), 1.0)
+        self.assertEqual(_perfect_roll_bonus("attack_rating", 100), 0.0)
 
     def test_generator_all_resistance_never_exceeds_eleven(self):
         from generate_test_blood_ring import generate
