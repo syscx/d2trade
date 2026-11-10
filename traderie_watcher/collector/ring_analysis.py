@@ -253,6 +253,8 @@ def build_recommendation(stats: dict[str, int]) -> dict[str, Any]:
   "recommended_build": recommended,
   "best_candidate": best,
   "fit_score": round(score, 2),
+  "target_coverage": round(target_coverage, 3),
+  "recommendation_minimum_target_coverage": 0.60,
   "confidence": "heuristic",
   "demand_tier": demand["demand_tier"],
   "ranked_profiles": [
