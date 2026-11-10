@@ -112,6 +112,24 @@ class BloodRingTests(unittest.TestCase):
         self.assertEqual(_perfect_roll_bonus("all_resist", 11), 1.0)
         self.assertEqual(_perfect_roll_bonus("all_resist", 10), 0.0)
 
+    def test_perfect_bonus_excludes_magic_find_and_gold_find(self):
+        from ring_analysis import _perfect_roll_bonus
+        self.assertEqual(_perfect_roll_bonus("magic_find", 25), 0.0)
+        self.assertEqual(_perfect_roll_bonus("gold_find", 100), 0.0)
+        self.assertEqual(_perfect_roll_bonus("attack_rating", 100), 1.0)
+        self.assertEqual(_perfect_roll_bonus("attack_rating", 120), 0.0)
+
+    def test_generator_all_resistance_never_exceeds_eleven(self):
+        from generate_test_blood_ring import generate
+        for seed in range(1000):
+            item = generate(seed)
+            if "all_resist" in item["random_affixes"]:
+                match = __import__("re").search(
+                    r"\\+(\\d+) to All Resistances", item["visible_text"]
+                )
+                self.assertIsNotNone(match)
+                self.assertLessEqual(int(match.group(1)), 11)
+
     def test_perfect_roll_bonus_is_applied_to_score(self):
         score, reasons = score_ring_stats({"life_leech":3, "life":20, "strength":5, "all_resist":11})
         self.assertTrue(any("perfect-roll bonus +1.00" in reason for reason in reasons))
