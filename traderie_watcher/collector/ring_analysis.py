@@ -338,7 +338,9 @@ def extract_ring_properties(title: str, visible_text: str) -> dict[str,Any] | No
  elif score>=35: verdict="situational ring; use distance-weighted completed sales"
  else: verdict="low-quality ring; conservative fallback unless sales show otherwise"
  valid_blood_fcr=fcr is None or fcr==10
- random_affixes=[key for key in RANDOM_AFFIX_KEYS if key in stats and\n  (key not in {"life_leech", "strength"} or\n   stats[key] > (3 if key == "life_leech" else 5))]
+ random_affixes=[key for key in RANDOM_AFFIX_KEYS if key in stats and
+  (key not in {"life_leech", "strength"} or
+   stats[key] > (3 if key == "life_leech" else 5))]
  weak=sum(1 for key in random_affixes if _affix_roll_quality(key,stats[key])[0]*AFFIX_IMPORTANCE[key]<0.15)
  poor=(score<65.0 or (len(random_affixes)>=3 and (weak>=2 or sum(_affix_roll_quality(k,stats[k])[0]*AFFIX_IMPORTANCE[k] for k in random_affixes)/len(random_affixes)<0.35)))
  return {"item_type":"ring","craft_type":"blood_candidate" if blood_candidate and valid_blood_fcr else "unknown_or_other",
