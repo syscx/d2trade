@@ -205,7 +205,8 @@ def build_demand_analysis(stats: dict[str, int]) -> dict[str, Any]:
 # These are initial D2R ring heuristics, not claims about every build or market.
 BUILD_TARGETS = {
  "javazon": {"fcr":10,"mana_leech":4,"all_resist":8,"attack_rating":80,"dexterity":10},
- "sorceress": {"fcr":10,"mana":35,"mana_leech":4,"all_resist":8,"lightning_resist":20},\n "es_sorceress": {"fcr":10,"mana":35,"poison_resist":20,"poison_length_reduced":25,"strength":5,"dexterity":10},
+ "sorceress": {"fcr":10,"mana":35,"mana_leech":4,"all_resist":8,"lightning_resist":20},
+ "es_sorceress": {"fcr":10,"mana":35,"poison_resist":20,"poison_length_reduced":25,"strength":5,"dexterity":10},
  "melee": {"life_leech":3,"strength":5,"dexterity":10,"attack_rating":80,"all_resist":8},
  "general_caster": {"fcr":10,"mana":35,"mana_leech":4,"all_resist":8,"life":15},
 }
