@@ -100,6 +100,7 @@ class BloodRingTests(unittest.TestCase):
         self.assertIn("attack_rating", demand["profiles"]["melee"]["useful_stats"])
         self.assertIn("strength", demand["profiles"]["melee"]["useful_stats"])
         self.assertIn("dexterity", demand["profiles"]["melee"]["useful_stats"])
+        self.assertGreater(demand["profiles"]["melee"]["score"], 90.0)
 
     def test_attack_rating_116_is_near_maximum_roll(self):
         from ring_analysis import _affix_roll_quality
@@ -129,7 +130,7 @@ class BloodRingTests(unittest.TestCase):
         score, reasons = score_ring_stats({"attack_rating": 60})
         self.assertGreater(score, 0.0)
         self.assertLess(score, 2.0)
-        self.assertTrue(any("importance 0.45" in reason for reason in reasons))
+        self.assertTrue(any("importance 0.80" in reason for reason in reasons))
 
     def test_all_resistance_uses_eleven_maximum_without_elemental_penalty(self):
         from ring_analysis import _affix_roll_quality
