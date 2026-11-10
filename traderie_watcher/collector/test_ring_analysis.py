@@ -322,6 +322,48 @@ class EnergyShieldSorceressTests(unittest.TestCase):
             missing = {item["stat"] for item in result["target_benchmark"]["missing"]}
             self.assertTrue({"poison_resist", "poison_length_reduced"} & missing)
 
+class ClassSpecificBuildProfileTests(unittest.TestCase):
+    def test_caster_does_not_value_life_or_mana_leech(self):
+        from ring_analysis import build_demand_analysis
+        demand = build_demand_analysis({
+            "fcr": 10, "mana": 50, "life_leech": 3, "mana_leech": 6,
+            "all_resist": 11,
+        })
+        for profile in ("sorceress", "general_caster", "es_sorceress"):
+            self.assertNotIn("life_leech", demand["profiles"][profile]["useful_stats"])
+            self.assertNotIn("mana_leech", demand["profiles"][profile]["useful_stats"])
+
+    def test_mana_per_kill_is_parsed_and_supports_caster(self):
+        item = extract_ring_properties("Rare Ring",
+            "+10% Faster Cast Rate\\n+50 to Mana\\n+3 Mana after Each Kill")
+        self.assertEqual(item["stats"]["mana_per_kill"], 3)
+        from ring_analysis import build_demand_analysis
+        demand = build_demand_analysis(item["stats"])
+        self.assertGreater(demand["profiles"]["sorceress"]["score"], 0)
+
+    def test_lightning_javazon_prefers_lightning_over_fire_resistance(self):
+        from ring_analysis import build_demand_analysis
+        lightning = build_demand_analysis({
+            "fcr": 10, "mana_leech": 6, "lightning_resist": 30,
+            "fire_resist": 30, "all_resist": 11,
+        })
+        profile = lightning["profiles"]["javazon"]
+        self.assertIn("lightning_resist", profile["useful_stats"])
+        self.assertGreater(
+            profile["stat_contributions"][0]["weight"],
+            0.0,
+        )
+
+    def test_build_recommendations_overlap(self):
+        from ring_analysis import build_recommendation
+        result = build_recommendation({
+            "fcr": 10, "life_leech": 3, "mana_leech": 6,
+            "strength": 5, "dexterity": 15, "all_resist": 11,
+        })
+        builds = {item["build"] for item in result["recommendations"]}
+        self.assertGreaterEqual(len(builds), 2)
+
+
 class RuneValueDisplayTests(unittest.TestCase):
     def test_values_above_two_ist_show_remainder_in_pskulls(self):
         self.assertEqual(format_pskull_value(39), "2 Ist + 9 Pskulls")
