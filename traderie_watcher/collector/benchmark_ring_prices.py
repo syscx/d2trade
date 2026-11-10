@@ -48,6 +48,15 @@ HIGH_FCR_CASES = (
      "10% Faster Cast Rate\n6% Mana Stolen Per Hit\n+11 to All Resistances\n+30% to Fire Resistance"),
 )
 
+# Class-specific cases: ordinary casters favor Mana per Kill and must not
+# receive demand credit for leech; Lightning Javazon favors lightning res.
+CLASS_PROFILE_CASES = (
+    ("caster_mana_per_kill", "3% Life Stolen Per Hit\\n+20 to Life\\n+5 to Strength\\n"
+     "10% Faster Cast Rate\\n+50 to Mana\\n+3 Mana after Each Kill\\n+11 to All Resistances"),
+    ("lightning_javazon", "3% Life Stolen Per Hit\\n+20 to Life\\n+5 to Strength\\n"
+     "10% Faster Cast Rate\\n6% Mana Stolen Per Hit\\n+30% to Lightning Resistance\\n+11 to All Resistances"),
+)
+
 
 def post_ring(case_name: str, category: str, seed: int | None,
               title: str, visible_text: str) -> dict:
@@ -83,6 +92,9 @@ def build_cases() -> list[tuple[str, str, int | None, str, str]]:
                       "Blood Ring (SYNTHETIC TEST DATA)", visible_text))
     for name, visible_text in HIGH_FCR_CASES:
         cases.append((name, "high_score_10_fcr", None,
+                      "Blood Ring (SYNTHETIC TEST DATA)", visible_text))
+    for name, visible_text in CLASS_PROFILE_CASES:
+        cases.append((name, "class_profile", None,
                       "Blood Ring (SYNTHETIC TEST DATA)", visible_text))
     return cases
 
@@ -145,7 +157,7 @@ def main() -> int:
         "benchmark_cases": len(results),
         "category_counts": {
             category: sum(1 for item in results if item["category"] == category)
-            for category in ("random", "medium_score", "high_score_10_fcr")
+            for category in ("random", "medium_score", "high_score_10_fcr", "class_profile")
         },
         "results": results,
     }
