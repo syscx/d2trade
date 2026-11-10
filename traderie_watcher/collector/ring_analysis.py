@@ -190,6 +190,63 @@ def build_demand_analysis(stats: dict[str, int]) -> dict[str, Any]:
                   "niche" if len(viable) == 1 else "weak"),
 }
 
+# Practical roll targets used by the recommendation explainer.
+# These are initial D2R ring heuristics, not claims about every build or market.
+BUILD_TARGETS = {
+ "javazon": {"fcr":10,"mana_leech":4,"all_resist":8,"attack_rating":80,"dexterity":10},
+ "sorceress": {"fcr":10,"mana":35,"mana_leech":4,"all_resist":8,"lightning_resist":20},
+ "melee": {"life_leech":3,"strength":5,"dexterity":10,"attack_rating":80,"all_resist":8},
+ "general_caster": {"fcr":10,"mana":35,"mana_leech":4,"all_resist":8,"life":15},
+}
+
+def build_recommendation(stats: dict[str, int]) -> dict[str, Any]:
+ """Return the best-fit audience and actionable gaps against its target rolls."""
+ demand = build_demand_analysis(stats)
+ ranked = demand["ranked_profiles"]
+ best = demand["best_profile"]
+ score = float(demand["best_score"])
+ recommended = best if score >= 45.0 else None
+ target = BUILD_TARGETS.get(recommended, {}) if recommended else {}
+ met = []
+ missing = []
+ below = []
+ for key, minimum in target.items():
+  actual = stats.get(key)
+  if actual is None:
+   missing.append({"stat": key, "target": minimum})
+  elif actual >= minimum:
+   met.append({"stat": key, "actual": actual, "target": minimum})
+  else:
+   below.append({"stat": key, "actual": actual, "target": minimum,
+                 "gap": minimum - actual})
+ if recommended:
+  summary = (f"Best fit: {recommended.replace('_', ' ').title()} "
+             f"({score:.1f}/100 heuristic fit).")
+ else:
+  summary = "No clear build recommendation: no profile reached the 45/100 fit threshold."
+ return {
+  "recommended_build": recommended,
+  "best_candidate": best,
+  "fit_score": round(score, 2),
+  "confidence": "heuristic",
+  "demand_tier": demand["demand_tier"],
+  "ranked_profiles": [
+   {"build": name, "fit_score": demand["profiles"][name]["score"],
+    "useful_stats": demand["profiles"][name]["useful_stats"]}
+   for name in ranked
+  ],
+  "target_benchmark": {
+   "targets": target,
+   "met": met,
+   "below_target": below,
+   "missing": missing,
+   "completion_count": len(met),
+   "target_count": len(target),
+  },
+  "summary": summary,
+  "caveat": "Build weights and target rolls are initial heuristics; validate them against actual build guides and completed-sale data.",
+ }
+
 def ring_quality_features(stats: dict[str,int]) -> set[str]:
  thresholds={"mana_leech":4,"life_leech":3,"dexterity":5,"strength":5,"life":15,"attack_rating":100,"all_resist":10}
  return {key for key,minimum in thresholds.items() if stats.get(key,0)>=minimum}
