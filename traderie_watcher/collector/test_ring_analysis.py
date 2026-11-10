@@ -259,7 +259,11 @@ class BuildRecommendationTests(unittest.TestCase):
         from ring_analysis import build_recommendation
         result = build_recommendation({})
         self.assertIsNone(result["recommended_build"])
-        self.assertEqual(result["target_benchmark"]["target_count"], 0)
+        # The best candidate's target gaps remain visible for diagnostics,
+        # even though the ring is not eligible for a recommendation.
+        self.assertEqual(result["target_benchmark"]["target_count"], 5)
+        self.assertEqual(result["target_benchmark"]["completion_count"], 0)
+        self.assertEqual(len(result["target_benchmark"]["missing"]), 5)
 
     def test_target_benchmark_reports_missing_and_below_rolls(self):
         from ring_analysis import build_recommendation
