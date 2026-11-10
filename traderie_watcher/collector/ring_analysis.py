@@ -33,14 +33,14 @@ FIXED_BLOOD_KEYS = {"life_leech", "life", "strength"}
 RANDOM_AFFIX_KEYS = (
  "fcr", "mana_leech", "dexterity", "all_resist", "fire_resist",
  "cold_resist", "lightning_resist", "poison_resist", "mana", "mana_per_kill",
- "attack_rating", "magic_find", "gold_find", "life_replenish", "poison_length_reduced",
+ "attack_rating", "strength", "life_leech", "magic_find", "gold_find", "life_replenish", "poison_length_reduced",
 )
 # Relative market usefulness of a perfect roll. FCR is the benchmark.
 # These are transparent initial heuristics, not fitted market coefficients.
 AFFIX_IMPORTANCE = {
  "fcr":1.00, "mana_leech":0.90, "all_resist":0.85, "mana_per_kill":0.55,
  "fire_resist":0.85, "cold_resist":0.60, "lightning_resist":0.85, "poison_resist":0.50, "poison_length_reduced":0.35,
- "dexterity":0.75, "mana":0.55, "attack_rating":0.45,
+ "dexterity":0.75, "strength":0.90, "life_leech":0.95, "mana":0.55, "attack_rating":0.80,
  "life_replenish":0.00, "magic_find":0.20, "gold_find":0.08,
 }
 
@@ -60,9 +60,9 @@ def _affix_roll_quality(key: str, value: int) -> tuple[float, str]:
  if key == "attack_rating":
   if value < 60:
    return (-0.05, "low attack rating is penalized")
-  return (0.025 + _clamp((value-60)/40)*0.975, "attack rating scored from 60 to 100")
+  return (0.025 + _clamp((value-60)/60)*0.975, "attack rating scored from 60 to 120")
  maxima = {
-  "mana":50, "mana_leech":6, "mana_per_kill":1, "dexterity":15,
+  "mana":50, "mana_leech":6, "mana_per_kill":1, "dexterity":15,\n  "strength":20, "life_leech":6,
   "magic_find":25, "gold_find":100, "life_replenish":5,
   "all_resist":11, "fire_resist":30, "cold_resist":30,
   "lightning_resist":30, "poison_resist":30, "attack_rating":120, "poison_length_reduced":25,
@@ -166,11 +166,11 @@ BUILD_PROFILES = {
 def _profile_roll_quality(key: str, value: int) -> float:
  """Normalize a stat for build-fit scoring without reusing market importance."""
  if key == "life_leech":
-  return _clamp(value / 3.0)
+  return _clamp(value / 9.0)
  if key == "life":
   return _clamp((value - 10.0) / 10.0)
  if key == "strength":
-  return _clamp(value / 5.0)
+  return _clamp(value / 25.0)
  if key == "mana_per_kill":
   return _clamp(value / 1.0)
  return max(0.0, _affix_roll_quality(key, int(value))[0])
@@ -309,10 +309,17 @@ def extract_ring_properties(title: str, visible_text: str) -> dict[str,Any] | No
  if not re.search(r"\bring\b",raw,re.I): return None
  stats={}
  for key,patterns in PATTERNS.items():
+  matches=[]
+  seen_spans=set()
   for pattern in patterns:
-   match=re.search(pattern,raw,re.I)
-   if match:
-    stats[key]=int(match.group(1)); break
+   for match in re.finditer(pattern,raw,re.I):
+    if match.span() not in seen_spans:
+     matches.append(match)
+     seen_spans.add(match.span())
+  if matches:
+   # Blood craft Life Leech and Strength may be merged with random affixes.
+   stats[key]=(sum(int(m.group(1)) for m in matches)
+               if key in {"life_leech", "strength"} else int(matches[0].group(1)))
  blood_candidate=stats.get("life_leech",0)>0
  fcr=stats.get("fcr")
  score,reasons=score_ring_stats(stats)
@@ -321,10 +328,10 @@ def extract_ring_properties(title: str, visible_text: str) -> dict[str,Any] | No
  elif score>=35: verdict="situational ring; use distance-weighted completed sales"
  else: verdict="low-quality ring; conservative fallback unless sales show otherwise"
  valid_blood_fcr=fcr is None or fcr==10
- random_affixes=[key for key in RANDOM_AFFIX_KEYS if key in stats]
+ random_affixes=[key for key in RANDOM_AFFIX_KEYS if key in stats and\n  (key not in {"life_leech", "strength"} or\n   stats[key] > (3 if key == "life_leech" else 5))]
  weak=sum(1 for key in random_affixes if _affix_roll_quality(key,stats[key])[0]*AFFIX_IMPORTANCE[key]<0.15)
  poor=(score<65.0 or (len(random_affixes)>=3 and (weak>=2 or sum(_affix_roll_quality(k,stats[k])[0]*AFFIX_IMPORTANCE[k] for k in random_affixes)/len(random_affixes)<0.35)))
  return {"item_type":"ring","craft_type":"blood_candidate" if blood_candidate and valid_blood_fcr else "unknown_or_other",
   "stats":stats,"heuristic_score":score,"quality_score_percent":score,"verdict":verdict,"reasons":reasons,
   "random_affixes":random_affixes,"random_affix_count":len(random_affixes),"poor_stat_combination":poor,
-  "confidence":"low","fcr_valid_for_blood_ring":valid_blood_fcr,"raw_text":raw[:4000],"extraction_version":6}
+  "confidence":"low","fcr_valid_for_blood_ring":valid_blood_fcr,"raw_text":raw[:4000],"extraction_version":7}
