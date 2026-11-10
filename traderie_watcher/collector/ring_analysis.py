@@ -240,7 +240,7 @@ def build_recommendation(stats: dict[str, int]) -> dict[str, Any]:
   coverage = len(met) / len(targets) if targets else 0.0
   # A high fit score with some target coverage is enough to show a recommendation.
   # Overlapping audiences are intentional; do not force a single winner.
-  if profile_result["score"] >= 40.0 and coverage >= 0.20:
+  if profile_result["score"] >= 40.0 and coverage >= 0.40:
    recommendations.append({
     "build": name, "fit_score": profile_result["score"],
     "target_coverage": round(coverage, 3),
