@@ -32,6 +32,18 @@ CASES = (
         "expected_build": "sorceress",
     },
     {
+        "name": "es_sorceress_premium",
+        "stats": {"fcr": 10, "mana": 50, "poison_resist": 30,
+                  "poison_length_reduced": 25, "strength": 5, "dexterity": 15},
+        "expected_build": "es_sorceress",
+    },
+    {
+        "name": "es_sorceress_without_ring_fcr",
+        "stats": {"mana": 50, "poison_resist": 30,
+                  "poison_length_reduced": 25, "strength": 5, "dexterity": 15},
+        "expected_build": None,
+    },
+    {
         "name": "weak_no_build",
         "stats": {},
         "expected_build": None,
