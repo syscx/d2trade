@@ -330,13 +330,31 @@ class Handler(BaseHTTPRequestHandler):
      method="low_quality_cap"
      confidence="low"
      note="Both conditions met: quality below 90% and poor stat combination. Conservative score-based fallback, capped at 15 Pskulls."
+    elif adjusted and diagnostics["distance_fallback_used"]:
+     # With fewer than three close matches, distant sales are weak evidence:
+     # retain their directional signal, but prevent them from dominating the
+     # estimate. Blend a conservative score anchor with a bounded market signal.
+     score_anchor=max(1.0,quality_percent*0.35)
+     market_low=weighted_quantile(adjusted,0.25)
+     market_med=weighted_quantile(adjusted,0.50)
+     market_high=weighted_quantile(adjusted,0.75)
+     market_ceiling=max(15.0,score_anchor*3.0)
+     bounded_low=min(market_low,market_ceiling)
+     bounded_med=min(market_med,market_ceiling)
+     bounded_high=min(market_high,market_ceiling)
+     low=score_anchor*0.75*0.75+bounded_low*0.25
+     med=score_anchor*0.75+bounded_med*0.25
+     high=score_anchor*1.25*0.75+bounded_high*0.25
+     method="bounded_distance_fallback"
+     confidence="low"
+     note="Fewer than three close completed sales: distant sales contribute only 25% of the estimate and are capped at three times the score-based anchor (minimum 15 Pskulls). The remaining 75% comes from the conservative quality anchor. 90% is sale reliability weight, not a price discount."
     elif adjusted:
      low=weighted_quantile(adjusted,0.25)
      med=weighted_quantile(adjusted,0.50)
      high=weighted_quantile(adjusted,0.75)
-     method="distance_weighted_completed_sales" if diagnostics["distance_fallback_used"] else "completed_sale_comparables"
-     confidence="high" if len(close)>=3 else ("medium" if selected[0]["distance"]<=0.75 else "low")
-     note="Completed sales only. Gaussian distance weights and directional quality adjustment reduce influence from distant or superior rings. 90% is sale reliability weight, not a price discount."
+     method="completed_sale_comparables"
+     confidence="high"
+     note="Completed sales only. At least three close matches support Gaussian distance weighting and directional quality adjustment. 90% is sale reliability weight, not a price discount."
     else:
      # Last-resort estimate only when no usable historical sale exists.
      fallback=max(1.0,quality_percent*0.35)
