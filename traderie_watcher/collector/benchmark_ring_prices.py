@@ -1,9 +1,10 @@
-"""Benchmark twelve synthetic Blood Rings against the local completed-sale database.
+"""Benchmark thirteen synthetic Blood Rings against the local completed-sale database.
 
 Coverage:
 - 2 deterministic random rings
 - 2 medium-quality rings (designed to score 45-64)
 - 3 high-quality 10 FCR rings (designed to score >= 65)
+- 2 class-profile rings and 4 Phase 2 regression rings
 
 Run from this directory:
     python benchmark_ring_prices.py
