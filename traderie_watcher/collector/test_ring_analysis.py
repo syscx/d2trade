@@ -64,6 +64,49 @@ class BloodRingTests(unittest.TestCase):
         self.assertEqual(item["stats"]["life_leech"], 3)
         self.assertGreater(score_ring_stats(item["stats"])[0], 0)
 
+
+    def test_merged_blood_life_leech_and_strength_retain_random_affix_value(self):
+        item = extract_ring_properties("Blood Ring",
+            "3% Life Stolen Per Hit\\n+5 to Strength\\n"
+            "2% Life Stolen Per Hit\\n+18 to Strength")
+        self.assertEqual(item["stats"]["life_leech"], 5)
+        self.assertEqual(item["stats"]["strength"], 23)
+        score, reasons = score_ring_stats(item["stats"])
+        self.assertTrue(any("life_leech affix=2" in reason for reason in reasons))
+        self.assertTrue(any("strength affix=18" in reason for reason in reasons))
+        self.assertGreater(score, 30)
+
+    def test_six_percent_mana_leech_is_a_full_roll(self):
+        item = extract_ring_properties("Blood Ring",
+            "1% Life Stolen Per Hit\\n+10 to Life\\n+1 to Strength\\n"
+            "6% Mana Stolen Per Hit")
+        self.assertEqual(item["stats"]["mana_leech"], 6)
+        score, reasons = score_ring_stats(item["stats"])
+        self.assertTrue(any("mana_leech=6" in reason and "21.25" in reason
+                            for reason in reasons))
+
+    def test_premium_melee_example_scores_attack_rating_dex_strength_and_mpk(self):
+        item = extract_ring_properties("Blood Ring",
+            "1% Life Stolen Per Hit\\n+10 to Life\\n+23 to Strength\\n"
+            "+116 to Attack Rating\\n+15 to Dexterity\\n"
+            "+1 to Mana After Each Kill")
+        self.assertEqual(item["stats"]["attack_rating"], 116)
+        self.assertEqual(item["stats"]["strength"], 23)
+        self.assertEqual(item["stats"]["dexterity"], 15)
+        self.assertEqual(item["stats"]["mana_per_kill"], 1)
+        self.assertGreaterEqual(item["quality_score_percent"], 75)
+        from ring_analysis import build_demand_analysis
+        demand = build_demand_analysis(item["stats"])
+        self.assertIn("attack_rating", demand["profiles"]["melee"]["useful_stats"])
+        self.assertIn("strength", demand["profiles"]["melee"]["useful_stats"])
+        self.assertIn("dexterity", demand["profiles"]["melee"]["useful_stats"])
+
+    def test_attack_rating_116_is_near_maximum_roll(self):
+        from ring_analysis import _affix_roll_quality
+        quality, explanation = _affix_roll_quality("attack_rating", 116)
+        self.assertGreaterEqual(quality, 0.95)
+        self.assertIn("60 to 120", explanation)
+
     def test_premium_affix_mismatch_is_explicit(self):
         from ring_analysis import ring_quality_gap
         target = {"fcr": 10, "attack_rating": 3, "fire_resist": 13, "mana": 18}
