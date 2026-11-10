@@ -22,7 +22,7 @@ PATTERNS = {
  "poison_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?poison\s+resist"],
  "poison_length_reduced":[r"poison\s+length\s+reduced\s+by\s+(\d{1,3})\s*%"],
  "mana":[r"[+]?([\d]{1,3})\s+to\s+mana\b"],
- "mana_per_kill":[r"([+]?\d{1,2})\s+mana\s+after\s+each\s+kill",r"([+]?\d{1,2})\s+to\s+mana\s+per\s+kill"],
+ "mana_per_kill":[r"([+]?\d{1,2})\s+mana\s+after\s+each\s+kill",r"([+]?\d{1,2})\s+to\s+mana\s+after\s+each\s+kill",r"([+]?\d{1,2})\s+to\s+mana\s+per\s+kill"],
  "attack_rating":[r"[+]?([\d]{1,3})\s+to\s+attack\s+rating\b"],
  "magic_find":[r"(\d{1,2})\s*%?\s*better\s+chance\s+of\s+getting\s+magic\s+items?"],
  "gold_find":[r"(\d{1,3})\s*%?\s*(?:extra\s+gold|gold\s+find)"],
