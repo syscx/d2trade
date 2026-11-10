@@ -18,6 +18,20 @@ ALLOWED_ORIGIN_PREFIX="chrome-extension://"
 def connect():
  db=sqlite3.connect(DB_PATH); db.row_factory=sqlite3.Row; return db
 
+def directional_sale_penalty(target_score, sale_score, threshold=10.0, decay=0.12):
+ """Discount a sale only when its ring/build score exceeds the target's.
+
+ A target stronger than the sale receives no directional penalty. The first
+ threshold points of weakness are tolerated; additional gap decays the sale's
+ statistical influence exponentially.
+ """
+ weaker_by=max(0.0,float(sale_score)-float(target_score))
+ excess=max(0.0,weaker_by-float(threshold))
+ penalty=__import__("math").exp(-float(decay)*excess)
+ return {"weaker_by":round(weaker_by,2),"excess":round(excess,2),
+         "penalty":round(penalty,4),"threshold":float(threshold)}
+
+
 def is_completed_sale_listing(listing):
  # Traderie completed-sale cards use "They Give" for the item and "I Give"
  # for the seller-entered final trade price. Legacy collector stored the
@@ -317,27 +331,24 @@ class Handler(BaseHTTPRequestHandler):
       # quality adjustment. A weaker target must never receive an upward
       # adjustment from a stronger sale record.
       if item.get("build"):
-       weaker_by=max(0.0,float(item.get("sale_build_fit",0.0))-float(item.get("target_build_fit",0.0)))
-       directional_excess=max(0.0,weaker_by-10.0)
-       directional_penalty=__import__("math").exp(-0.12*directional_excess)
-       quality_ratio=max(0.50,min(1.50,raw_quality_ratio))
-       if weaker_by>0:
-        quality_ratio=min(1.0,quality_ratio)
+       directional=directional_sale_penalty(
+        item.get("target_build_fit",0.0),item.get("sale_build_fit",0.0))
       else:
-       weaker_by=max(0.0,float(item["heuristic_score"])-quality_percent)
-       directional_excess=max(0.0,weaker_by-10.0)
-       directional_penalty=__import__("math").exp(-0.12*directional_excess)
-       quality_ratio=max(0.50,min(1.50,raw_quality_ratio))
-       if weaker_by>0:
-        quality_ratio=min(1.0,quality_ratio)
+       directional=directional_sale_penalty(quality_percent,item["heuristic_score"])
+      directional_penalty=directional["penalty"]
+      quality_ratio=max(0.50,min(1.50,raw_quality_ratio))
+      if directional["weaker_by"]>0:
+       quality_ratio=min(1.0,quality_ratio)
+      weaker_by=directional["weaker_by"]
       adjusted_price=max(0.0,item["value"]*(quality_ratio**0.75))
       combined_weight=(item["weight"]*distance_weight*
        float(item.get("build_match_weight",1.0))*directional_penalty)
       adjusted_rows.append({**item,"distance_weight":distance_weight,
        "quality_ratio":quality_ratio,"adjusted_price":adjusted_price,
-       "target_weaker_score_gap":round(weaker_by,2),
-       "directional_penalty_threshold":10.0,
-       "directional_price_penalty":round(directional_penalty,4),
+       "target_weaker_score_gap":weaker_by,
+       "directional_penalty_threshold":directional["threshold"],
+       "directional_penalty_excess":directional["excess"],
+       "directional_price_penalty":directional_penalty,
        "combined_weight":combined_weight})
      adjusted_rows.sort(key=lambda x:x["adjusted_price"])
      return adjusted_rows
@@ -504,7 +515,12 @@ class Handler(BaseHTTPRequestHandler):
        "build":x.get("build"),"also_matches":x.get("also_matches",[]),
        "target_build_fit":x.get("target_build_fit"),"sale_build_fit":x.get("sale_build_fit"),
        "build_match_weight":round(x.get("build_match_weight",1.0),4),
-       "quality_ratio":round(x["quality_ratio"],4),"weight":round(x["combined_weight"],4),
+       "quality_ratio":round(x["quality_ratio"],4),
+       "target_weaker_score_gap":x.get("target_weaker_score_gap",0.0),
+       "directional_penalty_threshold":x.get("directional_penalty_threshold",10.0),
+       "directional_penalty_excess":x.get("directional_penalty_excess",0.0),
+       "directional_price_penalty":x.get("directional_price_penalty",1.0),
+       "weight":round(x["combined_weight"],4),
        "stats":x["stats"],"quality_score":x["heuristic_score"],
        "quality_gap":x["quality_gap"],"distance_components":x["distance_components"],
         "build_distance_components":x.get("build_distance_components",{})}
