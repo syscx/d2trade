@@ -274,6 +274,40 @@ class BuildRecommendationTests(unittest.TestCase):
         self.assertIn("attack_rating", [item["stat"] for item in benchmark["missing"]])
 
 
+
+class EnergyShieldSorceressTests(unittest.TestCase):
+    def test_extracts_poison_length_reduction(self):
+        item = extract_ring_properties("Rare Ring",
+            "10% Faster Cast Rate\\n+50 to Mana\\nPoison Length Reduced by 25%")
+        self.assertEqual(item["stats"]["poison_length_reduced"], 25)
+
+    def test_es_sorceress_recommended_for_fcr_mana_poison_defense_ring(self):
+        from ring_analysis import build_recommendation
+        result = build_recommendation({
+            "fcr": 10, "mana": 50, "poison_resist": 30,
+            "poison_length_reduced": 25, "strength": 5, "dexterity": 15,
+        })
+        self.assertEqual(result["recommended_build"], "es_sorceress")
+        self.assertEqual(result["target_benchmark"]["target_count"], 6)
+        self.assertEqual(result["target_benchmark"]["completion_count"], 6)
+
+    def test_es_sorceress_requires_ten_fcr_on_ring(self):
+        from ring_analysis import build_demand_analysis
+        stats = {"mana": 50, "poison_resist": 30,
+                 "poison_length_reduced": 25, "strength": 5, "dexterity": 15}
+        result = build_demand_analysis(stats)
+        self.assertEqual(result["profiles"]["es_sorceress"]["score"], 0.0)
+        self.assertIn("blocked_reason", result["profiles"]["es_sorceress"])
+
+    def test_es_target_reports_missing_poison_defense(self):
+        from ring_analysis import build_recommendation
+        result = build_recommendation({
+            "fcr": 10, "mana": 50, "strength": 5, "dexterity": 15,
+        })
+        if result["recommended_build"] == "es_sorceress":
+            missing = {item["stat"] for item in result["target_benchmark"]["missing"]}
+            self.assertTrue({"poison_resist", "poison_length_reduced"} & missing)
+
 class RuneValueDisplayTests(unittest.TestCase):
     def test_values_above_two_ist_show_remainder_in_pskulls(self):
         self.assertEqual(format_pskull_value(39), "2 Ist + 9 Pskulls")
