@@ -39,7 +39,7 @@ AFFIX_IMPORTANCE = {
  "fcr":1.00, "mana_leech":0.90, "all_resist":0.85,
  "fire_resist":0.70, "cold_resist":0.70, "lightning_resist":0.70, "poison_resist":0.55,
  "dexterity":0.75, "mana":0.55, "attack_rating":0.45,
- "life_replenish":0.35, "magic_find":0.20, "gold_find":0.08,
+ "life_replenish":0.00, "magic_find":0.20, "gold_find":0.08,
 }
 
 def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
@@ -136,7 +136,7 @@ def extract_ring_properties(title: str, visible_text: str) -> dict[str,Any] | No
  valid_blood_fcr=fcr is None or fcr==10
  random_affixes=[key for key in RANDOM_AFFIX_KEYS if key in stats]
  weak=sum(1 for key in random_affixes if _affix_roll_quality(key,stats[key])[0]*AFFIX_IMPORTANCE[key]<0.15)
- poor=(len(random_affixes)>=3 and (weak>=2 or sum(_affix_roll_quality(k,stats[k])[0]*AFFIX_IMPORTANCE[k] for k in random_affixes)/len(random_affixes)<0.35))
+ poor=(score<65.0 or (len(random_affixes)>=3 and (weak>=2 or sum(_affix_roll_quality(k,stats[k])[0]*AFFIX_IMPORTANCE[k] for k in random_affixes)/len(random_affixes)<0.35)))
  return {"item_type":"ring","craft_type":"blood_candidate" if blood_candidate and valid_blood_fcr else "unknown_or_other",
   "stats":stats,"heuristic_score":score,"quality_score_percent":score,"verdict":verdict,"reasons":reasons,
   "random_affixes":random_affixes,"random_affix_count":len(random_affixes),"poor_stat_combination":poor,
