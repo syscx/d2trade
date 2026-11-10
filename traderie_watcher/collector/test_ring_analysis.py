@@ -227,6 +227,47 @@ class BuildDemandTests(unittest.TestCase):
         self.assertEqual(demand["demand_tier"], "weak")
 
 
+
+class BuildRecommendationTests(unittest.TestCase):
+    def test_javazon_target_recommends_javazon(self):
+        from ring_analysis import build_recommendation
+        result = build_recommendation({
+            "fcr": 10, "mana_leech": 6, "all_resist": 11,
+            "attack_rating": 100, "dexterity": 15,
+        })
+        self.assertEqual(result["recommended_build"], "javazon")
+        self.assertGreaterEqual(result["fit_score"], 45)
+        self.assertGreater(result["target_benchmark"]["completion_count"], 0)
+
+    def test_melee_target_recommends_melee(self):
+        from ring_analysis import build_recommendation
+        result = build_recommendation({
+            "life_leech": 3, "strength": 5, "dexterity": 15,
+            "attack_rating": 100, "all_resist": 11,
+        })
+        self.assertEqual(result["recommended_build"], "melee")
+
+    def test_caster_target_recommends_caster_audience(self):
+        from ring_analysis import build_recommendation
+        result = build_recommendation({
+            "fcr": 10, "mana": 50, "mana_leech": 6,
+            "all_resist": 11, "lightning_resist": 30,
+        })
+        self.assertIn(result["recommended_build"], {"sorceress", "general_caster"})
+
+    def test_no_meaningful_stats_has_no_recommendation(self):
+        from ring_analysis import build_recommendation
+        result = build_recommendation({})
+        self.assertIsNone(result["recommended_build"])
+        self.assertEqual(result["target_benchmark"]["target_count"], 0)
+
+    def test_target_benchmark_reports_missing_and_below_rolls(self):
+        from ring_analysis import build_recommendation
+        result = build_recommendation({"fcr": 10, "mana": 20})
+        benchmark = result["target_benchmark"]
+        self.assertTrue(benchmark["missing"] or benchmark["below_target"])
+
+
 class RuneValueDisplayTests(unittest.TestCase):
     def test_values_above_two_ist_show_remainder_in_pskulls(self):
         self.assertEqual(format_pskull_value(39), "2 Ist + 9 Pskulls")
