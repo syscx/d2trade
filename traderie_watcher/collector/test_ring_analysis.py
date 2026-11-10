@@ -263,9 +263,15 @@ class BuildRecommendationTests(unittest.TestCase):
 
     def test_target_benchmark_reports_missing_and_below_rolls(self):
         from ring_analysis import build_recommendation
-        result = build_recommendation({"fcr": 10, "mana": 20})
+        # Strong enough to recommend Javazon, but deliberately omit its
+        # attack-rating target so the report must expose a target gap.
+        result = build_recommendation({
+            "fcr": 10, "mana_leech": 6, "all_resist": 11, "dexterity": 15,
+        })
+        self.assertEqual(result["recommended_build"], "javazon")
         benchmark = result["target_benchmark"]
         self.assertTrue(benchmark["missing"] or benchmark["below_target"])
+        self.assertIn("attack_rating", [item["stat"] for item in benchmark["missing"]])
 
 
 class RuneValueDisplayTests(unittest.TestCase):
