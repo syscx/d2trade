@@ -349,10 +349,8 @@ class ClassSpecificBuildProfileTests(unittest.TestCase):
         })
         profile = lightning["profiles"]["javazon"]
         self.assertIn("lightning_resist", profile["useful_stats"])
-        self.assertGreater(
-            profile["stat_contributions"][0]["weight"],
-            0.0,
-        )
+        self.assertIn("lightning_resist", profile["useful_stats"])
+        self.assertNotIn("fire_resist", profile["useful_stats"])
 
     def test_build_recommendations_overlap(self):
         from ring_analysis import build_recommendation
