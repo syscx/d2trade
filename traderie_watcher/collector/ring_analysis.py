@@ -62,10 +62,11 @@ def _affix_roll_quality(key: str, value: int) -> tuple[float, str]:
    return (-0.05, "low attack rating is penalized")
   return (0.025 + _clamp((value-60)/60)*0.975, "attack rating scored from 60 to 120")
  maxima = {
-  "mana":50, "mana_leech":6, "mana_per_kill":1, "dexterity":15,\n  "strength":20, "life_leech":6,
-  "magic_find":25, "gold_find":100, "life_replenish":5,
-  "all_resist":11, "fire_resist":30, "cold_resist":30,
-  "lightning_resist":30, "poison_resist":30, "attack_rating":120, "poison_length_reduced":25,
+  "mana":50, "mana_leech":6, "mana_per_kill":1, "dexterity":15,
+  "strength":20, "life_leech":6, "magic_find":25, "gold_find":100,
+  "life_replenish":5, "all_resist":11, "fire_resist":30, "cold_resist":30,
+  "lightning_resist":30, "poison_resist":30, "attack_rating":120,
+  "poison_length_reduced":25,
  }
  maximum = maxima.get(key)
  if maximum:
@@ -86,8 +87,8 @@ def _perfect_roll_bonus(key: str, value: int) -> float:
  maxima = {
   "fcr":10, "mana_leech":6, "all_resist":11,
   "fire_resist":30, "cold_resist":30, "lightning_resist":30,
-  "poison_resist":30, "poison_length_reduced":25, "mana":50, "dexterity":15,
-  "attack_rating":100,
+  "poison_resist":30, "poison_length_reduced":25, "mana":50,
+  "dexterity":15, "strength":20, "attack_rating":120,
  }
  return 1.0 if AFFIX_IMPORTANCE.get(key, 0.0) > 0 and maxima.get(key) == value else 0.0
 
@@ -100,19 +101,29 @@ def score_ring_stats(stats: dict[str, int]) -> tuple[float, list[str]]:
  for key in RANDOM_AFFIX_KEYS:
   if key not in stats:
    continue
-  roll, explanation=_affix_roll_quality(key,int(stats[key]))
+  raw_value=int(stats[key])
+  # Blood craft contributes up to 3% Life Leech and +5 Strength.
+  # Any amount above those maxima is scored as an additional random affix.
+  value=(max(0,raw_value-3) if key=="life_leech" else
+         max(0,raw_value-5) if key=="strength" else raw_value)
+  if key in {"life_leech","strength"} and value<=0:
+   continue
+  roll, explanation=_affix_roll_quality(key,value)
   importance=AFFIX_IMPORTANCE[key]
-  bonus=_perfect_roll_bonus(key,int(stats[key]))
-  scored.append((key,roll,importance,explanation,bonus))
- # Select the four strongest affixes using their weighted score plus perfect-roll bonus.
- scored.sort(key=lambda x:x[1]*x[2]*21.25+x[4],reverse=True)
+  bonus=_perfect_roll_bonus(key,value)
+  scored.append((key,value,roll,importance,explanation,bonus))
+ scored.sort(key=lambda item:item[2]*item[3]*21.25+item[5],reverse=True)
  chosen=scored[:4]
  affix_score=0.0
- for key,roll,importance,explanation,bonus in chosen:
+ for key,value,roll,importance,explanation,bonus in chosen:
   points=roll*importance*21.25
   affix_score+=points+bonus
   bonus_note=f"; perfect-roll bonus +{bonus:.2f}" if bonus else ""
-  reasons.append(f"{key}={stats[key]}: {points+bonus:+.2f}/21.25 (base {points:.2f}; importance {importance:.2f}{bonus_note}; {explanation})")
+  reasons.append(
+   f"{key} affix={value} (combined stat {stats[key]}): "
+   f"{points+bonus:+.2f}/21.25 (base {points:.2f}; importance "
+   f"{importance:.2f}{bonus_note}; {explanation})"
+  )
  for slot in range(4-len(chosen)):
   reasons.append(f"Empty random affix slot {slot+1}: 0/21.25")
  total=max(0.0,min(100.0,fixed_score+affix_score))
@@ -190,8 +201,7 @@ def build_demand_analysis(stats: dict[str, int]) -> dict[str, Any]:
                        weight, key, int(stats[key])))
   candidates.sort(key=lambda item: item[0], reverse=True)
   selected = candidates[:4]
-  denominator = sum(sorted([w for w in weights.values() if w > 0],
-                            reverse=True)[:4]) or 1.0
+  denominator = sum(item[1] for item in selected) or 1.0
   score = 100.0 * sum(item[0] for item in selected) / denominator
   scores[profile] = {
    "score": round(_clamp(score, 0.0, 100.0), 2),
