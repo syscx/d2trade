@@ -438,6 +438,71 @@ class DirectionalComparablePenaltyTests(unittest.TestCase):
         self.assertLess(large, moderate)
 
 
+
+class UserObservationRegressionTests(unittest.TestCase):
+    """Exact stat snapshots supplied by the user; protect extraction and ranking."""
+    def test_observation_147_is_premium_melee_ring(self):
+        item=extract_ring_properties("Blood Ring",
+            "2% Life Stolen Per Hit\\n+52 to Life\\n+3 to Strength\\n"
+            "+14 to Dexterity\\n+104 to Attack Rating\\n+8 to Minimum Damage")
+        stats=item["stats"]
+        self.assertEqual(stats["min_damage"],8)
+        self.assertEqual(stats["attack_rating"],104)
+        self.assertEqual(stats["life"],52)
+        self.assertGreaterEqual(item["quality_score_percent"],80)
+        from ring_analysis import build_demand_analysis
+        self.assertGreaterEqual(build_demand_analysis(stats)["profiles"]["melee"]["score"],90)
+
+    def test_observation_165_is_premium_melee_ring(self):
+        item=extract_ring_properties("Blood Ring",
+            "2% Life Stolen Per Hit\\n+13 to Life\\n+5 to Strength\\n"
+            "+120 to Attack Rating\\n+9 to Minimum Damage\\n"
+            "Fire Resist +30%\\nPoison Resist +24%")
+        stats=item["stats"]
+        self.assertEqual(stats["min_damage"],9)
+        self.assertEqual(stats["max_damage"],None) if "max_damage" in stats else None
+        self.assertEqual(stats["attack_rating"],120)
+        self.assertEqual(stats["fire_resist"],30)
+        self.assertEqual(stats["poison_resist"],24)
+        self.assertGreaterEqual(item["quality_score_percent"],80)
+        from ring_analysis import build_demand_analysis
+        self.assertGreaterEqual(build_demand_analysis(stats)["profiles"]["melee"]["score"],90)
+
+    def test_case4_is_materially_weaker_than_observations_147_and_165(self):
+        case4=extract_ring_properties("Blood Ring",
+            "2% Life Stolen Per Hit\\n+18 to Life\\n+4 to Strength\\n"
+            "3% Mana Stolen Per Hit\\n+12 to Dexterity\\n"
+            "Lightning Resist +12%\\n+40 to Mana")
+        obs147=extract_ring_properties("Blood Ring",
+            "2% Life Stolen Per Hit\\n+52 to Life\\n+3 to Strength\\n"
+            "+14 to Dexterity\\n+104 to Attack Rating\\n+8 to Minimum Damage")
+        obs165=extract_ring_properties("Blood Ring",
+            "2% Life Stolen Per Hit\\n+13 to Life\\n+5 to Strength\\n"
+            "+120 to Attack Rating\\n+9 to Minimum Damage\\n"
+            "Fire Resist +30%\\nPoison Resist +24%")
+        self.assertLess(case4["quality_score_percent"],obs147["quality_score_percent"]-20)
+        self.assertLess(case4["quality_score_percent"],obs165["quality_score_percent"]-20)
+        from ring_analysis import build_demand_analysis
+        self.assertLess(build_demand_analysis(case4["stats"])["profiles"]["melee"]["score"],
+                        build_demand_analysis(obs147["stats"])["profiles"]["melee"]["score"])
+        self.assertLess(build_demand_analysis(case4["stats"])["profiles"]["melee"]["score"],
+                        build_demand_analysis(obs165["stats"])["profiles"]["melee"]["score"])
+
+    def test_min_max_damage_are_melee_weighted_but_not_caster_weighted(self):
+        from ring_analysis import build_demand_analysis
+        demand=build_demand_analysis({"min_damage":9,"max_damage":15})
+        self.assertGreater(demand["profiles"]["melee"]["score"],90)
+        self.assertEqual(demand["profiles"]["sorceress"]["score"],0)
+
+    def test_damage_reduction_stats_have_small_positive_value(self):
+        from ring_analysis import AFFIX_IMPORTANCE, score_ring_stats
+        self.assertGreater(AFFIX_IMPORTANCE["damage_reduced"],0)
+        self.assertGreater(AFFIX_IMPORTANCE["magic_damage_reduced"],0)
+        self.assertLess(AFFIX_IMPORTANCE["damage_reduced"],0.2)
+        score,_=score_ring_stats({"damage_reduced":2,"magic_damage_reduced":2})
+        self.assertGreater(score,0)
+
+
 class RuneValueDisplayTests(unittest.TestCase):
     def test_values_above_two_ist_show_remainder_in_pskulls(self):
         self.assertEqual(format_pskull_value(39), "2 Ist + 9 Pskulls")
