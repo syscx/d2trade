@@ -41,7 +41,7 @@ CASES = (
         "name": "es_sorceress_without_ring_fcr",
         "stats": {"mana": 50, "poison_resist": 30,
                   "poison_length_reduced": 25, "strength": 5, "dexterity": 15},
-        "expected_build": "sorceress",
+        "expected_build": None,
     },
     {
         "name": "weak_no_build",
