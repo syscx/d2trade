@@ -337,7 +337,7 @@ class ClassSpecificBuildProfileTests(unittest.TestCase):
         from ring_analysis import _affix_roll_quality
         roll, explanation = _affix_roll_quality("mana_per_kill", 1)
         self.assertEqual(roll, 1.0)
-        self.assertIn("maximum 1", explanation)
+        self.assertIn("normalized against 1", explanation)
 
     def test_mana_per_kill_is_parsed_and_supports_caster(self):
         item = extract_ring_properties("Rare Ring",
