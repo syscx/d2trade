@@ -85,7 +85,7 @@ def _perfect_roll_bonus(key: str, value: int) -> float:
   "fcr":10, "mana_leech":6, "all_resist":11,
   "fire_resist":30, "cold_resist":30, "lightning_resist":30,
   "poison_resist":30, "mana":50, "dexterity":15,
-  "attack_rating":120, "magic_find":25, "gold_find":100,
+  "attack_rating":100,
  }
  return 1.0 if AFFIX_IMPORTANCE.get(key, 0.0) > 0 and maxima.get(key) == value else 0.0
 
