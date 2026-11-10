@@ -1,3 +1,4 @@
+import re
 import unittest
 from ring_analysis import extract_ring_properties, score_ring_stats
 from valuation import format_pskull_value, rune_bundle_value_pskulls
@@ -124,8 +125,8 @@ class BloodRingTests(unittest.TestCase):
         for seed in range(1000):
             item = generate(seed)
             if "all_resist" in item["random_affixes"]:
-                match = __import__("re").search(
-                    r"\\+(\\d+) to All Resistances", item["visible_text"]
+                match = re.search(
+                    r"\+(\d+) to All Resistances", item["visible_text"]
                 )
                 self.assertIsNotNone(match)
                 self.assertLessEqual(int(match.group(1)), 11)
