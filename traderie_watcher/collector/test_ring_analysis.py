@@ -193,6 +193,40 @@ class BloodRingTests(unittest.TestCase):
         self.assertEqual(gf_score, 1.36)  # 80/100 roll × 0.08 importance × 21.25 slot
 
 
+class BuildDemandTests(unittest.TestCase):
+    def test_broad_premium_ring_has_multi_build_demand(self):
+        from ring_analysis import build_demand_analysis
+        demand = build_demand_analysis({
+            "fcr": 10, "strength": 5, "all_resist": 11,
+            "dexterity": 15, "life_leech": 3, "life": 20,
+        })
+        self.assertGreaterEqual(demand["viable_profile_count"], 2)
+        self.assertIn(demand["demand_tier"], {"multi_build", "broad"})
+        self.assertGreaterEqual(demand["best_score"], 45)
+
+    def test_attack_rating_is_not_a_sorceress_priority(self):
+        from ring_analysis import build_demand_analysis
+        with_ar = build_demand_analysis({"attack_rating": 100})
+        without_ar = build_demand_analysis({})
+        self.assertLess(with_ar["profiles"]["sorceress"]["score"], 1.0)
+        self.assertGreater(with_ar["profiles"]["javazon"]["score"],
+                           with_ar["profiles"]["sorceress"]["score"])
+        self.assertGreater(with_ar["profiles"]["melee"]["score"],
+                           with_ar["profiles"]["sorceress"]["score"])
+
+    def test_fcr_and_all_resist_improve_caster_profiles(self):
+        from ring_analysis import build_demand_analysis
+        demand = build_demand_analysis({"fcr": 10, "all_resist": 11, "mana": 50})
+        self.assertGreater(demand["profiles"]["sorceress"]["score"], 0)
+        self.assertGreater(demand["profiles"]["general_caster"]["score"], 0)
+
+    def test_empty_stats_have_no_viable_build_profiles(self):
+        from ring_analysis import build_demand_analysis
+        demand = build_demand_analysis({})
+        self.assertEqual(demand["viable_profile_count"], 0)
+        self.assertEqual(demand["demand_tier"], "weak")
+
+
 class RuneValueDisplayTests(unittest.TestCase):
     def test_values_above_two_ist_show_remainder_in_pskulls(self):
         self.assertEqual(format_pskull_value(39), "2 Ist + 9 Pskulls")
