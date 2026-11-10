@@ -380,7 +380,7 @@ class Handler(BaseHTTPRequestHandler):
        prior["also_matches"]=sorted(set(prior.get("also_matches",[])+[item["build"]]))
      selected=sorted(dedup.values(),key=lambda x:x["build_distance"])[:20]
      if not selected:
-      phase="phase_2_nearest_sales_fallback"
+      phase=("phase_2_nearest_sales_fallback" if comps else "phase_2_build_heuristic_no_sales")
       # Keep nearest completed sales as a low-confidence fallback even when
       # profiles are weak or the historical sample lacks enough parsed stats.
       selected=comps[:5]
