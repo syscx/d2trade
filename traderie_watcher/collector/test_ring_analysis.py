@@ -299,6 +299,16 @@ class EnergyShieldSorceressTests(unittest.TestCase):
         self.assertEqual(result["profiles"]["es_sorceress"]["score"], 0.0)
         self.assertIn("blocked_reason", result["profiles"]["es_sorceress"])
 
+
+    def test_sparse_affixes_do_not_force_a_build_recommendation(self):
+        from ring_analysis import build_recommendation
+        result = build_recommendation({
+            "mana": 50, "poison_resist": 30,
+            "poison_length_reduced": 25, "strength": 5, "dexterity": 15,
+        })
+        self.assertIsNone(result["recommended_build"])
+        self.assertLess(result["target_coverage"], 0.60)
+
     def test_es_target_reports_missing_poison_defense(self):
         from ring_analysis import build_recommendation
         result = build_recommendation({
