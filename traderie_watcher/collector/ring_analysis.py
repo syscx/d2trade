@@ -217,10 +217,19 @@ def build_recommendation(stats: dict[str, int]) -> dict[str, Any]:
  ranked = demand["ranked_profiles"]
  best = demand["best_profile"]
  score = float(demand["best_score"])
- recommended = best if score >= 45.0 else None
+ # A high profile score alone is not enough: require at least 60% of
+ # that profile's explicit target rolls. This prevents two generic stats
+ # (e.g. STR + DEX) from forcing a misleading class recommendation.
+ candidate_target = BUILD_TARGETS.get(best, {}) if best else {}
+ candidate_met = sum(1 for key, minimum in candidate_target.items()
+                     if stats.get(key) is not None and stats[key] >= minimum)
+ target_coverage = candidate_met / len(candidate_target) if candidate_target else 0.0
+ recommended = best if score >= 45.0 and target_coverage >= 0.60 else None
  if recommended == "es_sorceress" and stats.get("fcr") != 10:
   recommended = None
- target = BUILD_TARGETS.get(recommended, {}) if recommended else {}
+ # Keep the best candidate's target gaps visible even when confidence is
+ # insufficient to recommend that build.
+ target = candidate_target
  met = []
  missing = []
  below = []
@@ -237,7 +246,9 @@ def build_recommendation(stats: dict[str, int]) -> dict[str, Any]:
   summary = (f"Best fit: {recommended.replace('_', ' ').title()} "
              f"({score:.1f}/100 heuristic fit).")
  else:
-  summary = "No clear build recommendation: no profile reached the 45/100 fit threshold."
+  summary = (f"No recommendation: best candidate is {best} ({score:.1f}/100), "
+             f"but only {candidate_met}/{len(candidate_target)} target rolls are met; "
+             "minimum is 60%.") if best and candidate_target else "No clear build recommendation: no profile reached the 45/100 fit threshold."
  return {
   "recommended_build": recommended,
   "best_candidate": best,
