@@ -121,16 +121,16 @@ class BloodRingTests(unittest.TestCase):
         score, _ = score_ring_stats({"life_leech": 3})
         self.assertEqual(score, 5.0)  # 1/3 of the 15-point fixed package
 
-    def test_low_attack_rating_has_negative_roll_quality(self):
-        score, reasons = score_ring_stats({"attack_rating": 3})
-        self.assertEqual(score, 0.0)  # final total is floored at zero
-        self.assertTrue(any("low attack rating is penalized" in reason for reason in reasons))
+    def test_attack_rating_uses_normalized_roll_without_penalty(self):
+        score, reasons = score_ring_stats({"attack_rating": 3}, blood_craft=False)
+        self.assertAlmostEqual(score, 3 / 120 * 21.25, places=2)
+        self.assertTrue(any("normalized against maximum 120" in reason for reason in reasons))
 
     def test_attack_rating_60_to_99_is_weakly_weighted(self):
         score, reasons = score_ring_stats({"attack_rating": 60})
         self.assertGreater(score, 0.0)
         self.assertLess(score, 2.0)
-        self.assertTrue(any("importance 0.80" in reason for reason in reasons))
+        self.assertTrue(any("normalized against maximum 120" in reason for reason in reasons))
 
     def test_all_resistance_uses_eleven_maximum_without_elemental_penalty(self):
         from ring_analysis import _affix_roll_quality
@@ -152,17 +152,12 @@ class BloodRingTests(unittest.TestCase):
         self.assertGreater(AFFIX_IMPORTANCE["lightning_resist"], AFFIX_IMPORTANCE["cold_resist"])
         self.assertGreater(AFFIX_IMPORTANCE["cold_resist"], AFFIX_IMPORTANCE["poison_resist"])
 
-    def test_perfect_all_resistance_gets_small_bonus(self):
-        from ring_analysis import _perfect_roll_bonus
-        self.assertEqual(_perfect_roll_bonus("all_resist", 11), 1.0)
-        self.assertEqual(_perfect_roll_bonus("all_resist", 10), 0.0)
+    def test_perfect_all_resistance_uses_one_full_slot(self):
+        score, _ = score_ring_stats({"all_resist": 11}, blood_craft=False)
+        self.assertEqual(score, 21.25)
 
-    def test_perfect_bonus_excludes_magic_find_and_gold_find(self):
-        from ring_analysis import _perfect_roll_bonus
-        self.assertEqual(_perfect_roll_bonus("magic_find", 25), 0.0)
-        self.assertEqual(_perfect_roll_bonus("gold_find", 100), 0.0)
-        self.assertEqual(_perfect_roll_bonus("attack_rating", 120), 1.0)
-        self.assertEqual(_perfect_roll_bonus("attack_rating", 100), 0.0)
+    def test_perfect_roll_has_no_bonus_outside_four_slot_budget(self):
+        self.assertEqual(score_ring_stats({"attack_rating": 120}, blood_craft=False)[0], 21.25)
 
     def test_generator_all_resistance_never_exceeds_eleven(self):
         from generate_test_blood_ring import generate
@@ -175,17 +170,15 @@ class BloodRingTests(unittest.TestCase):
                 self.assertIsNotNone(match)
                 self.assertLessEqual(int(match.group(1)), 11)
 
-    def test_perfect_roll_bonus_is_applied_to_score(self):
-        score, reasons = score_ring_stats({"life_leech":3, "life":20, "strength":5, "all_resist":11})
-        self.assertTrue(any("perfect-roll bonus +1.00" in reason for reason in reasons))
-        self.assertGreater(score, 15.0)
+    def test_random_affix_points_never_exceed_one_slot(self):
+        score, _ = score_ring_stats({"life_leech":3, "life":20, "strength":5, "all_resist":11})
+        self.assertEqual(score, 36.25)
 
-    def test_magic_find_and_gold_find_have_low_importance(self):
-        mf_score, _ = score_ring_stats({"magic_find": 25})
-        gf_score, _ = score_ring_stats({"gold_find": 80})
-        self.assertLess(mf_score, 5.0)
-        self.assertLess(gf_score, 2.0)
-        self.assertGreater(mf_score, gf_score)
+    def test_magic_find_and_gold_find_use_roll_quality(self):
+        mf_score, _ = score_ring_stats({"magic_find": 25}, blood_craft=False)
+        gf_score, _ = score_ring_stats({"gold_find": 80}, blood_craft=False)
+        self.assertEqual(mf_score, 21.25)
+        self.assertEqual(gf_score, 17.0)
 
     def test_generator_never_exceeds_three_prefixes_or_suffixes(self):
         from generate_test_blood_ring import generate
@@ -230,11 +223,11 @@ class BloodRingTests(unittest.TestCase):
         if item["quality_score_percent"] >= 65:
             self.assertFalse(item["poor_stat_combination"])
 
-    def test_magic_find_and_gold_find_have_weak_weights(self):
-        mf_score, _ = score_ring_stats({"magic_find": 25})
-        gf_score, _ = score_ring_stats({"gold_find": 80})
-        self.assertEqual(mf_score, 4.25)  # 25/25 roll × 0.20 importance × 21.25 slot
-        self.assertEqual(gf_score, 1.36)  # 80/100 roll × 0.08 importance × 21.25 slot
+    def test_magic_find_and_gold_find_use_roll_quality_not_market_importance(self):
+        mf_score, _ = score_ring_stats({"magic_find": 25}, blood_craft=False)
+        gf_score, _ = score_ring_stats({"gold_find": 80}, blood_craft=False)
+        self.assertEqual(mf_score, 21.25)
+        self.assertEqual(gf_score, 17.0)
 
 
 class BuildDemandTests(unittest.TestCase):
@@ -440,6 +433,21 @@ class DirectionalComparablePenaltyTests(unittest.TestCase):
 
 
 class UserObservationRegressionTests(unittest.TestCase):
+    def test_three_random_affixes_leave_fourth_slot_empty(self):
+        score, reasons = score_ring_stats({
+            "life_leech": 3, "life": 20, "strength": 5,
+            "attack_rating": 120, "min_damage": 9, "dexterity": 15,
+        })
+        self.assertEqual(score, 78.75)
+        self.assertEqual(sum("Empty random affix slot" in r for r in reasons), 1)
+
+    def test_observation_147_score_matches_15_85_formula(self):
+        item = extract_ring_properties("Blood Ring",
+            "2% Life Stolen Per Hit\\n+52 to Life\\n+3 to Strength\\n"
+            "+14 to Dexterity\\n+104 to Attack Rating\\n+8 to Minimum Damage")
+        self.assertAlmostEqual(item["quality_score_percent"], 85.47, places=2)
+
+
     """Exact stat snapshots supplied by the user; protect extraction and ranking."""
     def test_observation_147_is_premium_melee_ring(self):
         item=extract_ring_properties("Blood Ring",
