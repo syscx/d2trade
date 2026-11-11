@@ -71,13 +71,17 @@ def _affix_roll_quality(key: str, value: int) -> tuple[float, str]:
  return (_clamp(value / maximum), f"{key} roll normalized against maximum {maximum}")
 
 def blood_craft_quality(stats: dict[str, int]) -> float:
- """Average normalized roll quality of the three guaranteed Blood properties."""
- ranges = {"life_leech":(1,3), "life":(10,20), "strength":(1,5)}
- values=[]
- for key,(minimum,maximum) in ranges.items():
-  value=stats.get(key)
-  values.append(_clamp((value-minimum)/(maximum-minimum)) if value is not None else 0.0)
- return sum(values)/3.0
+ """Average Blood-package roll divided by its maximum possible value.
+
+ The guaranteed Blood properties are life leech (max 3), life (max 20),
+ and strength (max 5). Missing properties score zero; values are clamped.
+ """
+ maxima = {"life_leech": 3, "life": 20, "strength": 5}
+ qualities = [
+  _clamp(float(stats.get(key, 0)) / maximum)
+  for key, maximum in maxima.items()
+ ]
+ return sum(qualities) / len(maxima)
 
 def _perfect_roll_bonus(key: str, value: int) -> float:
  """Small bonus for hitting the configured maximum on a useful affix."""
