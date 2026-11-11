@@ -16,10 +16,10 @@ PATTERNS = {
   "strength":[r"[+]?([\d]{1,3})\s+to\s+strength\b"],
  "dexterity":[r"[+]?([\d]{1,2})\s+to\s+dexterity\b"],
  "all_resist":[r"[+]?([\d]{1,2})\s+to\s+all\s+resistances?\b"],
- "fire_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?fire\s+resist",r"fire\s+resist\s*[+]?([\d]{1,2})\s*%?"],
- "cold_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?cold\s+resist",r"cold\s+resist\s*[+]?([\d]{1,2})\s*%?"],
- "lightning_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?lightning\s+resist",r"lightning\s+resist\s*[+]?([\d]{1,2})\s*%?"],
- "poison_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?poison\s+resist",r"poison\s+resist\s*[+]?([\d]{1,2})\s*%?"],
+ "fire_resist":[r"[+]?([\d]{1,2})[ \t]*%?[ \t]*(?:to[ \t]+)?fire[ \t]+resist",r"fire[ \t]+resist[ \t]*[+]?([\d]{1,2})[ \t]*%?"],
+ "cold_resist":[r"[+]?([\d]{1,2})[ \t]*%?[ \t]*(?:to[ \t]+)?cold[ \t]+resist",r"cold[ \t]+resist[ \t]*[+]?([\d]{1,2})[ \t]*%?"],
+ "lightning_resist":[r"[+]?([\d]{1,2})[ \t]*%?[ \t]*(?:to[ \t]+)?lightning[ \t]+resist",r"lightning[ \t]+resist[ \t]*[+]?([\d]{1,2})[ \t]*%?"],
+ "poison_resist":[r"[+]?([\d]{1,2})[ \t]*%?[ \t]*(?:to[ \t]+)?poison[ \t]+resist",r"poison[ \t]+resist[ \t]*[+]?([\d]{1,2})[ \t]*%?"],
  "poison_length_reduced":[r"poison\s+length\s+reduced\s+by\s+(\d{1,3})\s*%"],
  "mana":[r"[+]?([\d]{1,3})\s+to\s+mana\b"],
  "mana_per_kill":[r"([+]?\d{1,2})\s+mana\s+after\s+each\s+kill",r"([+]?\d{1,2})\s+to\s+mana\s+after\s+each\s+kill",r"([+]?\d{1,2})\s+to\s+mana\s+per\s+kill"],
@@ -71,7 +71,7 @@ def _affix_roll_quality(key: str, value: int) -> tuple[float, str]:
  if key in {"fire_resist", "cold_resist", "lightning_resist", "poison_resist"} and value < 15:
   return ((value - 15) / 15.0, f"{key} below 15 minimum useful roll")
  range_text = "60 to 120" if key == "attack_rating" else f"0 to {maximum}"
- return (_clamp(value / maximum), f"{key} roll normalized against {maximum} (range {range_text})")
+ return (_clamp(value / maximum), f"{key} roll normalized against maximum {maximum} (range {range_text})")
 
 def blood_craft_quality(stats: dict[str, int]) -> float:
  """Average Blood-package roll divided by its maximum possible value.
@@ -106,7 +106,7 @@ def score_ring_stats(stats: dict[str, int], blood_craft: bool = True) -> tuple[f
   if key not in stats:
    continue
   if AFFIX_IMPORTANCE.get(key, 0.0) <= 0:
-   reasons.append(f"{key}={stats[key]}: +0.00 (excluded from quality score)")
+   reasons.append(f"{key} affix={stats[key]}: +0.00/21.25 (excluded from quality score; does not consume a random slot)")
    continue
   raw_value = int(stats[key])
   # Remove the guaranteed Blood craft portion before treating excess as a random affix.
