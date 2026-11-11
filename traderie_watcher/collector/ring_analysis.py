@@ -68,7 +68,7 @@ def _affix_roll_quality(key: str, value: int) -> tuple[float, str]:
  maximum=maxima.get(key)
  if not maximum:
   return (0.0, f"{key} has no configured roll benchmark")
- return (_clamp(value / maximum), f"{key} roll normalized against maximum {maximum}")
+ return (_clamp(value / maximum), f"{key} roll normalized against {maximum} (configured range 0 to {maximum})")
 
 def blood_craft_quality(stats: dict[str, int]) -> float:
  """Average Blood-package roll divided by its maximum possible value.
@@ -107,7 +107,7 @@ def score_ring_stats(stats: dict[str, int], blood_craft: bool = True) -> tuple[f
   value = (max(0, raw_value - 3) if blood_craft and key == "life_leech" else
            max(0, raw_value - 5) if blood_craft and key == "strength" else
            max(0, raw_value - 20) if blood_craft and key == "life" else raw_value)
-  if value <= 0:
+  if value <= 0 or AFFIX_IMPORTANCE.get(key, 0.0) <= 0:
    continue
   roll, explanation = _affix_roll_quality(key, value)
   candidates.append((key, value, roll, explanation))
@@ -127,7 +127,7 @@ def score_ring_stats(stats: dict[str, int], blood_craft: bool = True) -> tuple[f
   reasons.append(f"Empty random affix slot {slot + 1}: 0/21.25")
  total = _clamp(fixed_score + affix_score, 0.0, 100.0)
  reasons.append(f"Total quality: {total:.2f}/100")
- return round(total, 2), reasons
+ return total, reasons
 
 
 # Build profiles are deliberately separate from the universal roll score.
