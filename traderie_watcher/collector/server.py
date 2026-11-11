@@ -9,6 +9,7 @@ from urllib.parse import urlparse, parse_qs, urljoin
 from jewel_analysis import analyze_listing, comparable_offer_summary, parse_rune_request
 from ring_analysis import extract_ring_properties, score_ring_stats, ring_quality_gap, build_demand_analysis, build_recommendation, BUILD_PROFILES
 from valuation import rune_bundle_value_pskulls, format_pskull_value
+from phase2_rarity_valuation import estimate_phase2_rarity_price
 
 ROOT=Path(__file__).resolve().parent
 DB_PATH=Path(os.environ.get("TRADERIE_WATCHER_DB",ROOT/"traderie_observations.sqlite3"))
@@ -430,7 +431,7 @@ class Handler(BaseHTTPRequestHandler):
       else:
        prior=dedup[key]
        prior["also_matches"]=sorted(set(prior.get("also_matches",[])+[item["build"]]))
-     selected=sorted(dedup.values(),key=lambda x:x["build_distance"])[:20]
+     selected=sorted(dedup.values(),key=lambda x:x["build_distance"])
      if not selected:
       phase="phase_2_insufficient_relevant_sales"
       # Distant or audience-mismatched sales must not create an invented price.
@@ -451,23 +452,47 @@ class Handler(BaseHTTPRequestHandler):
     diagnostics["sales_phase_qualified"]=bool(phase1_selected)
 
     adjusted=adjusted_comparables(selected)
-    if adjusted:
+    phase2_rarity_diagnostics=None
+    if phase2_build_matched and selected:
+     # New Phase 2: each completed sale is an independent price anchor.
+     # Normalize its price by its quality/rarity index, take the weighted
+     # median baseline, then apply the target ring's index. Unlike the legacy
+     # Phase 2, this does not extrapolate from build-fit score ratios.
+     rarity=estimate_phase2_rarity_price(quality_percent, selected)
+     phase2_rarity_diagnostics=rarity
+     anchor_by_id={a["observation_id"]:a for a in rarity.get("anchors",[])}
+     rarity_adjusted=[]
+     for item in selected:
+      anchor=anchor_by_id.get(item["observation_id"])
+      if not anchor:
+       continue
+      contribution=anchor["implied_base_price"]*rarity["target_rarity_index"]
+      rarity_adjusted.append({**item,
+       "adjusted_price":contribution,
+       "quality_ratio":rarity["target_rarity_index"]/anchor["rarity_index"],
+       "distance_weight":1.0,
+       "combined_weight":anchor["weight"],
+       "rarity_anchor":anchor})
+     adjusted=sorted(rarity_adjusted,key=lambda x:x["adjusted_price"])
+     low=rarity["low"]
+     med=rarity["median"]
+     high=rarity["high"]
+     method="phase_2_normal_rarity_calibrated_completed_sales"
+     effective=sum(x["combined_weight"] for x in adjusted)
+     prices=[x["adjusted_price"] for x in adjusted]
+     relative_range=(prices[-1]-prices[0])/max(med or 0.0,1.0) if len(prices)>1 else 1.0
+     confidence=("medium" if len(adjusted)>=5 and effective>=2.0 and relative_range<=0.50 else "low")
+     phase2_confidence_diagnostics={"relative_price_range":round(relative_range,3),
+      "effective_sample_weight":round(effective,3),"comparable_count":len(adjusted),
+      "medium_rule":"at least 5 anchors, effective weight >=2.0, relative range <=0.50",
+      "pricing_model":"normal_distribution_rarity"}
+    elif adjusted:
      low=weighted_quantile(adjusted,0.25)
      med=weighted_quantile(adjusted,0.50)
      high=weighted_quantile(adjusted,0.75)
      if phase1_selected:
       method="phase_1_direct_completed_sales"
       confidence="high" if len(close)>=5 and sum(x["combined_weight"] for x in adjusted)>=1.5 else "medium"
-     elif phase2_build_matched:
-      method="phase_2_build_specific_completed_sales"
-      prices=sorted(x["adjusted_price"] for x in adjusted)
-      p50=median(prices) if prices else 0.0
-      relative_range=(prices[-1]-prices[0])/max(p50,1.0) if len(prices)>1 else 1.0
-      effective=sum(x["combined_weight"] for x in adjusted)
-      confidence=("medium" if len(adjusted)>=5 and effective>=2.0 and relative_range<=0.35 else "low")
-      phase2_confidence_diagnostics={"relative_price_range":round(relative_range,3),
-       "effective_sample_weight":round(effective,3),"comparable_count":len(adjusted),
-       "medium_rule":"at least 5 comparables, effective weight >=2.0, relative range <=0.35"}
      else:
       method="phase_2_nearest_sales_without_build_match"
       confidence="low"
@@ -495,7 +520,7 @@ class Handler(BaseHTTPRequestHandler):
      "reliability_weight":0.90,"valuation_method":method,"confidence":confidence,
      "quality_score_percent":quality_percent,"poor_stat_combination":poor_combination,
      "effective_weight":round(sum(x["combined_weight"] for x in adjusted),4),
-     "phase2_confidence_diagnostics":(phase2_confidence_diagnostics if phase2_build_matched else None),
+     "phase2_confidence_diagnostics":(phase2_confidence_diagnostics if phase2_build_matched else None),\n     "phase2_rarity_model":phase2_rarity_diagnostics,
      "diagnostics":{"target_stats":target,"target_quality_score":quality_percent,
       "target_verdict":analysis["verdict"],"counts":diagnostics,
       "build_demand":build_demand,"build_recommendation":build_recommendation_result,
@@ -505,7 +530,7 @@ class Handler(BaseHTTPRequestHandler):
        "phase2":{"builds_evaluated":phase2_build_results,"build_sale_candidate_count":len(phase2_pool)}},
       "low_quality_cap_boundary":{"quality_below":65,"requires_poor_stat_combination":True,
        "requires_zero_viable_profiles":True,"best_profile_score_below":35},
-      "selection_method":"Phase 1: at least 3 close direct completed sales; Phase 2: build-fit-ranked completed sales when Phase 1 fails; no numeric estimate when no relevant completed sales exist.",
+      "selection_method":"Phase 1: at least 3 close direct completed sales; Phase 2: all deduplicated build-matched completed-sale anchors, normalized by the 85-centered normal rarity model; no numeric estimate without anchors.",
       "selected_comparables":[{"observation_id":x["observation_id"],
        "captured_at":x["captured_at"],"sale_price_pskulls":x["value"],
        "sale_price_display":format_pskull_value(x["value"]),
