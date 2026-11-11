@@ -16,10 +16,10 @@ PATTERNS = {
   "strength":[r"[+]?([\d]{1,3})\s+to\s+strength\b"],
  "dexterity":[r"[+]?([\d]{1,2})\s+to\s+dexterity\b"],
  "all_resist":[r"[+]?([\d]{1,2})\s+to\s+all\s+resistances?\b"],
- "fire_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?fire\s+resist"],
- "cold_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?cold\s+resist"],
- "lightning_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?lightning\s+resist"],
- "poison_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?poison\s+resist"],
+ "fire_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?fire\s+resist",r"fire\s+resist\s*[+]?([\d]{1,2})\s*%?"],
+ "cold_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?cold\s+resist",r"cold\s+resist\s*[+]?([\d]{1,2})\s*%?"],
+ "lightning_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?lightning\s+resist",r"lightning\s+resist\s*[+]?([\d]{1,2})\s*%?"],
+ "poison_resist":[r"[+]?([\d]{1,2})\s*%?\s*(?:to\s+)?poison\s+resist",r"poison\s+resist\s*[+]?([\d]{1,2})\s*%?"],
  "poison_length_reduced":[r"poison\s+length\s+reduced\s+by\s+(\d{1,3})\s*%"],
  "mana":[r"[+]?([\d]{1,3})\s+to\s+mana\b"],
  "mana_per_kill":[r"([+]?\d{1,2})\s+mana\s+after\s+each\s+kill",r"([+]?\d{1,2})\s+to\s+mana\s+after\s+each\s+kill",r"([+]?\d{1,2})\s+to\s+mana\s+per\s+kill"],
@@ -68,6 +68,8 @@ def _affix_roll_quality(key: str, value: int) -> tuple[float, str]:
  maximum=maxima.get(key)
  if not maximum:
   return (0.0, f"{key} has no configured roll benchmark")
+ if key in {"fire_resist", "cold_resist", "lightning_resist", "poison_resist"} and value < 15:
+  return ((value - 15) / 15.0, f"{key} below 15 minimum useful roll")
  return (_clamp(value / maximum), f"{key} roll normalized against {maximum} (configured range 0 to {maximum})")
 
 def blood_craft_quality(stats: dict[str, int]) -> float:
@@ -101,6 +103,9 @@ def score_ring_stats(stats: dict[str, int], blood_craft: bool = True) -> tuple[f
  candidates = []
  for key in RANDOM_AFFIX_KEYS:
   if key not in stats:
+   continue
+  if AFFIX_IMPORTANCE.get(key, 0.0) <= 0:
+   reasons.append(f"{key}={stats[key]}: +0.00 (excluded from quality score)")
    continue
   raw_value = int(stats[key])
   # Remove the guaranteed Blood craft portion before treating excess as a random affix.
