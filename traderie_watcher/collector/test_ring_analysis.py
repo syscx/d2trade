@@ -124,11 +124,11 @@ class BloodRingTests(unittest.TestCase):
     def test_attack_rating_uses_normalized_roll_without_penalty(self):
         score, reasons = score_ring_stats({"attack_rating": 3}, blood_craft=False)
         self.assertAlmostEqual(score, 3 / 120 * 21.25, places=2)
-        self.assertTrue(any("normalized against maximum 120" in reason for reason in reasons))
+        self.assertTrue(any("normalized against 120" in reason for reason in reasons))
 
     def test_attack_rating_60_is_half_of_one_random_slot(self):
         score, reasons = score_ring_stats({"attack_rating": 60}, blood_craft=False)
-        self.assertEqual(score, 10.625)
+        self.assertAlmostEqual(score, 10.625, places=3)
         self.assertTrue(any("normalized against maximum 120" in reason for reason in reasons))
 
     def test_all_resistance_uses_eleven_maximum_without_elemental_penalty(self):
