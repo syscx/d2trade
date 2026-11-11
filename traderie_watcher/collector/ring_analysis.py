@@ -54,31 +54,21 @@ def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
  return max(low, min(high, value))
 
 def _affix_roll_quality(key: str, value: int) -> tuple[float, str]:
- """Return roll quality, including negative scoring below useful thresholds."""
- if key == "fcr":
-  return (1.0 if value == 10 else 0.0, "10 FCR is a full-score affix")
- if key in {"fire_resist","cold_resist","lightning_resist","poison_resist"}:
-  if value < 15:
-   return (-0.25 * (15-value)/15, "resistance below 15 receives negative scoring")
-  return (_clamp((value-15)/15), "resistance scored from 15 to 30")
- if key == "all_resist":
-  return (_clamp(value/11), "all resistance scored against ring maximum 11")
- if key == "attack_rating":
-  if value < 60:
-   return (-0.05, "low attack rating is penalized")
-  return (0.025 + _clamp((value-60)/60)*0.975, "attack rating scored from 60 to 120")
+ """Normalize an affix roll against its configured maximum (0..1)."""
  maxima = {
-  "mana":50, "mana_leech":6, "mana_per_kill":1, "dexterity":15,
-  "strength":20, "life_leech":6, "magic_find":25, "gold_find":100,
-  "life_replenish":5, "min_damage":9, "max_damage":15, "damage_reduced":2,
-  "magic_damage_reduced": 2, "energy":15, "defense":100, "fhr":10, "ias":20, "damage_to_mana":12, "life":40, "all_resist":11, "fire_resist":30, "cold_resist":30,
+  "fcr":10, "mana":50, "mana_leech":6, "mana_per_kill":1,
+  "dexterity":15, "strength":20, "life_leech":6, "magic_find":25,
+  "gold_find":100, "life_replenish":5, "min_damage":9, "max_damage":15,
+  "damage_reduced":2, "magic_damage_reduced":2, "energy":15,
+  "defense":100, "fhr":10, "ias":20, "damage_to_mana":12,
+  "life":40, "all_resist":11, "fire_resist":30, "cold_resist":30,
   "lightning_resist":30, "poison_resist":30, "attack_rating":120,
   "poison_length_reduced":25,
  }
- maximum = maxima.get(key)
- if maximum:
-  return (_clamp(value/maximum), f"{key} roll normalized against {maximum}")
- return (0.0, f"{key} has no configured roll benchmark")
+ maximum=maxima.get(key)
+ if not maximum:
+  return (0.0, f"{key} has no configured roll benchmark")
+ return (_clamp(value / maximum), f"{key} roll normalized against maximum {maximum}")
 
 def blood_craft_quality(stats: dict[str, int]) -> float:
  """Average normalized roll quality of the three guaranteed Blood properties."""
@@ -101,45 +91,39 @@ def _perfect_roll_bonus(key: str, value: int) -> float:
 
 
 def score_ring_stats(stats: dict[str, int], blood_craft: bool = True) -> tuple[float, list[str]]:
- """Return a 0-100 score; optionally reserve the guaranteed Blood craft package."""
- fixed_score=blood_craft_quality(stats)*15.0 if blood_craft else 0.0
- reasons=[f"Blood craft package: {fixed_score:.2f}/15 (life leech, life, strength rolls)"]
- scored=[]
+ """Score the Blood package out of 15 plus four random affix slots worth 21.25 each."""
+ fixed_score = blood_craft_quality(stats) * 15.0 if blood_craft else 0.0
+ reasons = [f"Blood craft package: {fixed_score:.2f}/15 (life leech, life, strength rolls)"]
+ candidates = []
  for key in RANDOM_AFFIX_KEYS:
   if key not in stats:
    continue
-  raw_value=int(stats[key])
-  # Blood craft contributes up to 3% Life Leech and +5 Strength.
-  # Any amount above those maxima is scored as an additional random affix.
-  value=(max(0,raw_value-3) if blood_craft and key=="life_leech" else
-         max(0,raw_value-5) if blood_craft and key=="strength" else
-         max(0,raw_value-20) if blood_craft and key=="life" else raw_value)
-  if value<=0:
+  raw_value = int(stats[key])
+  # Remove the guaranteed Blood craft portion before treating excess as a random affix.
+  value = (max(0, raw_value - 3) if blood_craft and key == "life_leech" else
+           max(0, raw_value - 5) if blood_craft and key == "strength" else
+           max(0, raw_value - 20) if blood_craft and key == "life" else raw_value)
+  if value <= 0:
    continue
-  roll, explanation=_affix_roll_quality(key,value)
-  importance=AFFIX_IMPORTANCE.get(key,0.0)
-  bonus=_perfect_roll_bonus(key,value)
-  scored.append((key,value,roll,importance,explanation,bonus))
- scored.sort(key=lambda item:item[2]*item[3]*21.25+item[5],reverse=True)
- chosen=scored[:4]
- affix_score=0.0
- for key,value,roll,importance,explanation,bonus in chosen:
-  points=roll*importance*21.25
-  affix_score+=points+bonus
-  bonus_note=f"; perfect-roll bonus +{bonus:.2f}" if bonus else ""
-  if importance <= 0:
-   reasons.append(f"{key}={stats[key]}: +0.00 (zero market importance; excluded from quality score)")
-  else:
-   reasons.append(
-    f"{key} affix={value} (combined stat {stats[key]}): "
-    f"{points+bonus:+.2f}/21.25 (base {points:.2f}; importance "
-    f"{importance:.2f}{bonus_note}; {explanation})"
-   )
- for slot in range(4-len(chosen)):
-  reasons.append(f"Empty random affix slot {slot+1}: 0/21.25")
- total=max(0.0,min(100.0,fixed_score+affix_score))
+  roll, explanation = _affix_roll_quality(key, value)
+  candidates.append((key, value, roll, explanation))
+ # The item can contribute at most four random affixes. Each slot is worth 85/4;
+ # unused slots remain zero rather than redistributing their points.
+ candidates.sort(key=lambda item: item[2], reverse=True)
+ chosen = candidates[:4]
+ affix_score = 0.0
+ for key, value, roll, explanation in chosen:
+  points = roll * 21.25
+  affix_score += points
+  reasons.append(
+   f"{key} affix={value} (combined stat {stats[key]}): "
+   f"{points:+.2f}/21.25 ({explanation})"
+  )
+ for slot in range(4 - len(chosen)):
+  reasons.append(f"Empty random affix slot {slot + 1}: 0/21.25")
+ total = _clamp(fixed_score + affix_score, 0.0, 100.0)
  reasons.append(f"Total quality: {total:.2f}/100")
- return round(total,2),reasons
+ return round(total, 2), reasons
 
 
 # Build profiles are deliberately separate from the universal roll score.
@@ -366,11 +350,11 @@ def extract_ring_properties(title: str, visible_text: str) -> dict[str,Any] | No
    continue
   fixed_base=(3 if key=="life_leech" else 5 if key=="strength" else 20 if key=="life" else 0)
   random_value=max(0,stats[key]-fixed_base) if blood_tag and key in FIXED_BLOOD_KEYS else stats[key]
-  if random_value>0 and AFFIX_IMPORTANCE.get(key,0.0)>0:
+  if random_value>0:
    random_affixes.append(key)
  weak=sum(1 for key in random_affixes if _affix_roll_quality(key,stats[key])[0]*AFFIX_IMPORTANCE[key]<0.15)
  poor=(score<65.0 or (len(random_affixes)>=3 and (weak>=2 or sum(_affix_roll_quality(k,stats[k])[0]*AFFIX_IMPORTANCE[k] for k in random_affixes)/len(random_affixes)<0.35)))
  return {"item_type":"ring","craft_type":"blood_candidate" if blood_candidate and valid_blood_fcr else "unknown_or_other",
   "stats":stats,"heuristic_score":score,"quality_score_percent":score,"verdict":verdict,"reasons":reasons,
   "random_affixes":random_affixes,"random_affix_count":len(random_affixes),"poor_stat_combination":poor,
-  "confidence":"low","fcr_valid_for_blood_ring":valid_blood_fcr,"raw_text":raw[:4000],"extraction_version":8}
+  "confidence":"low","fcr_valid_for_blood_ring":valid_blood_fcr,"raw_text":raw[:4000],"extraction_version":9}
