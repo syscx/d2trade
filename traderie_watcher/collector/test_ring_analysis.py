@@ -126,10 +126,9 @@ class BloodRingTests(unittest.TestCase):
         self.assertAlmostEqual(score, 3 / 120 * 21.25, places=2)
         self.assertTrue(any("normalized against maximum 120" in reason for reason in reasons))
 
-    def test_attack_rating_60_to_99_is_weakly_weighted(self):
-        score, reasons = score_ring_stats({"attack_rating": 60})
-        self.assertGreater(score, 0.0)
-        self.assertLess(score, 2.0)
+    def test_attack_rating_60_is_half_of_one_random_slot(self):
+        score, reasons = score_ring_stats({"attack_rating": 60}, blood_craft=False)
+        self.assertEqual(score, 10.625)
         self.assertTrue(any("normalized against maximum 120" in reason for reason in reasons))
 
     def test_all_resistance_uses_eleven_maximum_without_elemental_penalty(self):
@@ -209,7 +208,7 @@ class BloodRingTests(unittest.TestCase):
             "life_leech": 3, "life": 20, "strength": 5, "life_replenish": 5
         })
         self.assertEqual(with_replenish, base)
-        self.assertTrue(any("life_replenish=5: +0.00" in reason for reason in reasons))
+        self.assertTrue(any("life_replenish affix=5" in reason and "+0.00/21.25" in reason for reason in reasons))
 
     def test_quality_below_65_is_always_poor_stat_combination(self):
         item = extract_ring_properties("Blood Ring",
