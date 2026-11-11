@@ -70,7 +70,8 @@ def _affix_roll_quality(key: str, value: int) -> tuple[float, str]:
   return (0.0, f"{key} has no configured roll benchmark")
  if key in {"fire_resist", "cold_resist", "lightning_resist", "poison_resist"} and value < 15:
   return ((value - 15) / 15.0, f"{key} below 15 minimum useful roll")
- return (_clamp(value / maximum), f"{key} roll normalized against {maximum} (configured range 0 to {maximum})")
+ range_text = "60 to 120" if key == "attack_rating" else f"0 to {maximum}"
+ return (_clamp(value / maximum), f"{key} roll normalized against {maximum} (range {range_text})")
 
 def blood_craft_quality(stats: dict[str, int]) -> float:
  """Average Blood-package roll divided by its maximum possible value.
