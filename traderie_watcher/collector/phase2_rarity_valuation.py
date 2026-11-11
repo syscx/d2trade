@@ -1,21 +1,20 @@
 """Phase 2 quality/rarity price calibration.
 
-The market-quality prior is centered at 85. The central 80% interval is
-75..95, so sigma is derived from the normal 10th/90th percentiles.
+The market-quality prior is centered at 85. The central 85% interval is
+75..95, so sigma is derived from the normal 7.5th/92.5th percentiles.
 Below the peak, quality scales value down. Above the peak, rarity creates
 a premium using the inverse normal-density ratio. Actual completed sales
-calibrate the market's baseline price; the prior never invents a currency
-anchor by itself.
+calibrate the market's baseline price; no sale price is hardcoded.
 """
 from __future__ import annotations
 
 from math import exp
-from statistics import median
 
 MARKET_SCORE_CENTER = 85.0
-MARKET_CENTRAL_80_HALF_WIDTH = 10.0
-NORMAL_80_Z = 1.2815515655446004
-MARKET_SCORE_SIGMA = MARKET_CENTRAL_80_HALF_WIDTH / NORMAL_80_Z
+MARKET_CENTRAL_SHARE = 0.85
+MARKET_CENTRAL_HALF_WIDTH = 10.0
+NORMAL_CENTRAL_85_Z = 1.4395314709384563
+MARKET_SCORE_SIGMA = MARKET_CENTRAL_HALF_WIDTH / NORMAL_CENTRAL_85_Z
 
 
 def quality_rarity_index(score: float) -> float:
@@ -42,15 +41,12 @@ def weighted_quantile(values: list[tuple[float, float]], q: float) -> float | No
     return valid[-1][0]
 
 
-def estimate_phase2_rarity_price(
-    target_score: float,
-    sales: list[dict],
-) -> dict:
-    """Calibrate a common baseline from sale anchors, then price target rarity.
+def estimate_phase2_rarity_price(target_score: float, sales: list[dict]) -> dict:
+    """Calibrate price from completed-sale anchors and target score rarity.
 
-    Each sale dict requires value, heuristic_score, and may include weight.
-    A sale at score S implies baseline = sale_price / rarity_index(S).
-    The weighted median baseline resists outlier sale prices.
+    Each sale requires value and heuristic_score; weight is optional.
+    Each observed sale implies a baseline price after normalizing for its
+    score's rarity. The weighted median baseline resists outlier sales.
     """
     anchors = []
     for sale in sales:
@@ -91,9 +87,10 @@ def estimate_phase2_rarity_price(
         "status": "estimate_available",
         "target_quality_score": float(target_score),
         "market_score_center": MARKET_SCORE_CENTER,
-        "market_central_80_range": [
-            MARKET_SCORE_CENTER - MARKET_CENTRAL_80_HALF_WIDTH,
-            MARKET_SCORE_CENTER + MARKET_CENTRAL_80_HALF_WIDTH,
+        "market_central_share": MARKET_CENTRAL_SHARE,
+        "market_central_range": [
+            MARKET_SCORE_CENTER - MARKET_CENTRAL_HALF_WIDTH,
+            MARKET_SCORE_CENTER + MARKET_CENTRAL_HALF_WIDTH,
         ],
         "normal_sigma": MARKET_SCORE_SIGMA,
         "target_rarity_index": target_index,
