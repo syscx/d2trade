@@ -67,8 +67,8 @@ class BloodRingTests(unittest.TestCase):
 
     def test_merged_blood_life_leech_and_strength_retain_random_affix_value(self):
         item = extract_ring_properties("Blood Ring",
-            "3% Life Stolen Per Hit\\n+5 to Strength\\n"
-            "2% Life Stolen Per Hit\\n+18 to Strength")
+            "3% Life Stolen Per Hit\n+5 to Strength\n"
+            "2% Life Stolen Per Hit\n+18 to Strength")
         self.assertEqual(item["stats"]["life_leech"], 5)
         self.assertEqual(item["stats"]["strength"], 23)
         score, reasons = score_ring_stats(item["stats"])
@@ -78,7 +78,7 @@ class BloodRingTests(unittest.TestCase):
 
     def test_six_percent_mana_leech_is_a_full_roll(self):
         item = extract_ring_properties("Blood Ring",
-            "1% Life Stolen Per Hit\\n+10 to Life\\n+1 to Strength\\n"
+            "1% Life Stolen Per Hit\n+10 to Life\n+1 to Strength\n"
             "6% Mana Stolen Per Hit")
         self.assertEqual(item["stats"]["mana_leech"], 6)
         score, reasons = score_ring_stats(item["stats"])
@@ -87,8 +87,8 @@ class BloodRingTests(unittest.TestCase):
 
     def test_premium_melee_example_scores_attack_rating_dex_strength_and_mpk(self):
         item = extract_ring_properties("Blood Ring",
-            "1% Life Stolen Per Hit\\n+10 to Life\\n+23 to Strength\\n"
-            "+116 to Attack Rating\\n+15 to Dexterity\\n"
+            "1% Life Stolen Per Hit\n+10 to Life\n+23 to Strength\n"
+            "+116 to Attack Rating\n+15 to Dexterity\n"
             "+1 to Mana After Each Kill")
         self.assertEqual(item["stats"]["attack_rating"], 116)
         self.assertEqual(item["stats"]["strength"], 23)
@@ -443,8 +443,8 @@ class UserObservationRegressionTests(unittest.TestCase):
     """Exact stat snapshots supplied by the user; protect extraction and ranking."""
     def test_observation_147_is_premium_melee_ring(self):
         item=extract_ring_properties("Blood Ring",
-            "2% Life Stolen Per Hit\\n+52 to Life\\n+3 to Strength\\n"
-            "+14 to Dexterity\\n+104 to Attack Rating\\n+8 to Minimum Damage")
+            "2% Life Stolen Per Hit\n+52 to Life\n+3 to Strength\n"
+            "+14 to Dexterity\n+104 to Attack Rating\n+8 to Minimum Damage")
         stats=item["stats"]
         self.assertEqual(stats["min_damage"],8)
         self.assertEqual(stats["attack_rating"],104)
@@ -455,9 +455,9 @@ class UserObservationRegressionTests(unittest.TestCase):
 
     def test_observation_165_is_premium_melee_ring(self):
         item=extract_ring_properties("Blood Ring",
-            "2% Life Stolen Per Hit\\n+13 to Life\\n+5 to Strength\\n"
-            "+120 to Attack Rating\\n+9 to Minimum Damage\\n"
-            "Fire Resist +30%\\nPoison Resist +24%")
+            "2% Life Stolen Per Hit\n+13 to Life\n+5 to Strength\n"
+            "+120 to Attack Rating\n+9 to Minimum Damage\n"
+            "Fire Resist +30%\nPoison Resist +24%")
         stats=item["stats"]
         self.assertEqual(stats["min_damage"],9)
         self.assertEqual(stats["max_damage"],None) if "max_damage" in stats else None
@@ -470,16 +470,16 @@ class UserObservationRegressionTests(unittest.TestCase):
 
     def test_case4_is_materially_weaker_than_observations_147_and_165(self):
         case4=extract_ring_properties("Blood Ring",
-            "2% Life Stolen Per Hit\\n+18 to Life\\n+4 to Strength\\n"
-            "3% Mana Stolen Per Hit\\n+12 to Dexterity\\n"
-            "Lightning Resist +12%\\n+40 to Mana")
+            "2% Life Stolen Per Hit\n+18 to Life\n+4 to Strength\n"
+            "3% Mana Stolen Per Hit\n+12 to Dexterity\n"
+            "Lightning Resist +12%\n+40 to Mana")
         obs147=extract_ring_properties("Blood Ring",
-            "2% Life Stolen Per Hit\\n+52 to Life\\n+3 to Strength\\n"
-            "+14 to Dexterity\\n+104 to Attack Rating\\n+8 to Minimum Damage")
+            "2% Life Stolen Per Hit\n+52 to Life\n+3 to Strength\n"
+            "+14 to Dexterity\n+104 to Attack Rating\n+8 to Minimum Damage")
         obs165=extract_ring_properties("Blood Ring",
-            "2% Life Stolen Per Hit\\n+13 to Life\\n+5 to Strength\\n"
-            "+120 to Attack Rating\\n+9 to Minimum Damage\\n"
-            "Fire Resist +30%\\nPoison Resist +24%")
+            "2% Life Stolen Per Hit\n+13 to Life\n+5 to Strength\n"
+            "+120 to Attack Rating\n+9 to Minimum Damage\n"
+            "Fire Resist +30%\nPoison Resist +24%")
         self.assertLess(case4["quality_score_percent"],obs147["quality_score_percent"]-20)
         self.assertLess(case4["quality_score_percent"],obs165["quality_score_percent"]-20)
         from ring_analysis import build_demand_analysis
