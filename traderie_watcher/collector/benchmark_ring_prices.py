@@ -1,0 +1,207 @@
+"""Benchmark thirteen synthetic Blood Rings against the local completed-sale database.
+
+Coverage:
+- 2 deterministic random rings
+- 2 medium-quality rings (designed to score 45-64)
+- 3 high-quality 10 FCR rings (designed to score >= 65)
+- 2 class-profile rings and 4 Phase 2 regression rings
+
+Run from this directory:
+    python benchmark_ring_prices.py
+
+Requires collector/server.py running at http://127.0.0.1:8765.
+Synthetic requests are read-only and do not insert observations.
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from urllib.error import URLError, HTTPError
+from urllib.request import Request, urlopen
+
+from generate_test_blood_ring import generate
+
+API_URL = "http://127.0.0.1:8765/analyze/ring"
+
+# Keep these two stable regression cases easy to inspect in every benchmark:
+# medium_2 is the known overpricing case; high_fcr_2 is the 10-FCR comparison.
+DETAILED_ANALYSIS_CASES = {"medium_2", "high_fcr_2"}
+
+# The first two are genuinely randomized by the seeded generator. Fixed seeds
+# make the benchmark repeatable while still exercising different stat mixes.
+RANDOM_CASES = (
+    ("random_1", 411),
+    ("random_2", 927),
+)
+
+# Four non-FCR affixes with moderate rolls: intended to land in the middle band.
+MEDIUM_CASES = (
+    ("medium_1", "3% Life Stolen Per Hit\n+15 to Life\n+3 to Strength\n"
+     "4% Mana Stolen Per Hit\n+10 to Dexterity\n+15% to Fire Resistance\n+35 to Mana"),
+    ("medium_2", "2% Life Stolen Per Hit\n+18 to Life\n+4 to Strength\n"
+     "3% Mana Stolen Per Hit\n+12 to Dexterity\n+12% to Lightning Resistance\n+40 to Mana"),
+)
+
+# All three have 10 FCR and strong complementary rolls. All Resistance is capped at 11. These are designed
+# high-score examples to test the premium-comparable path.
+HIGH_FCR_CASES = (
+    ("high_fcr_1", "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n"
+     "10% Faster Cast Rate\n6% Mana Stolen Per Hit\n+15 to Dexterity\n+11 to All Resistances"),
+    ("high_fcr_2", "3% Life Stolen Per Hit\n+19 to Life\n+5 to Strength\n"
+     "10% Faster Cast Rate\n6% Mana Stolen Per Hit\n+15 to Dexterity\n+50 to Mana"),
+    ("high_fcr_3", "3% Life Stolen Per Hit\n+20 to Life\n+4 to Strength\n"
+     "10% Faster Cast Rate\n6% Mana Stolen Per Hit\n+11 to All Resistances\n+30% to Fire Resistance"),
+)
+
+# Class-specific cases: ordinary casters favor Mana per Kill and must not
+# receive demand credit for leech; Lightning Javazon favors lightning res.
+CLASS_PROFILE_CASES = (
+    ("caster_mana_per_kill", "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n"
+     "10% Faster Cast Rate\n+50 to Mana\n+1 Mana after Each Kill\n+11 to All Resistances"),
+    ("lightning_javazon", "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n"
+     "10% Faster Cast Rate\n6% Mana Stolen Per Hit\n+30% to Lightning Resistance\n+11 to All Resistances"),
+)
+
+
+PHASE2_REGRESSION_CASES = (
+    ("caster_leech_should_not_raise_value", "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n10% Faster Cast Rate\n+50 to Mana\n+1 Mana after Each Kill\n6% Mana Stolen Per Hit"),
+    ("javazon_lightning_res_not_fire", "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n10% Faster Cast Rate\n6% Mana Stolen Per Hit\n+30% to Lightning Resistance\n+11 to All Resistances"),
+    ("javazon_fire_res_only", "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n10% Faster Cast Rate\n6% Mana Stolen Per Hit\n+30% to Fire Resistance\n+11 to All Resistances"),
+    ("non_fcr_melee", "3% Life Stolen Per Hit\n+20 to Life\n+5 to Strength\n+100 to Attack Rating\n+15 to Dexterity\n+11 to All Resistances\n+30% to Lightning Resistance"),
+)
+
+
+def post_ring(case_name: str, category: str, seed: int | None,
+              title: str, visible_text: str) -> dict:
+    payload = {
+        "title": title,
+        "visible_text": visible_text,
+        "synthetic": True,
+    }
+    request = Request(
+        API_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urlopen(request, timeout=30) as response:
+        result = json.loads(response.read().decode("utf-8"))
+    return {
+        "case": case_name,
+        "category": category,
+        "seed": seed,
+        "generated_ring": {"title": title, "visible_text": visible_text},
+        "analysis_result": result,
+    }
+
+
+def build_cases() -> list[tuple[str, str, int | None, str, str]]:
+    cases = []
+    for name, seed in RANDOM_CASES:
+        ring = generate(seed=seed)  # random 1-4 affix count and random rolls
+        cases.append((name, "random", seed, ring["title"], ring["visible_text"]))
+    for name, visible_text in MEDIUM_CASES:
+        cases.append((name, "medium_score", None,
+                      "Blood Ring (SYNTHETIC TEST DATA)", visible_text))
+    for name, visible_text in HIGH_FCR_CASES:
+        cases.append((name, "high_score_10_fcr", None,
+                      "Blood Ring (SYNTHETIC TEST DATA)", visible_text))
+    for name, visible_text in CLASS_PROFILE_CASES:
+        cases.append((name, "class_profile", None,
+                      "Blood Ring (SYNTHETIC TEST DATA)", visible_text))
+    for name, visible_text in PHASE2_REGRESSION_CASES:
+        cases.append((name, "phase2_regression", None,
+                      "Blood Ring (SYNTHETIC TEST DATA)", visible_text))
+    return cases
+
+
+def main() -> int:
+    results = []
+    try:
+        for case in build_cases():
+            results.append(post_ring(*case))
+    except (URLError, HTTPError, TimeoutError, json.JSONDecodeError) as exc:
+        print(f"Could not analyze rings through {API_URL}: {exc}")
+        print("Start collector/server.py first, then run this script again.")
+        return 1
+
+    output_path = Path("ring_price_benchmark_results.json")
+    output_path.write_text(
+        json.dumps(results, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    print(f"Analyzed {len(results)} synthetic rings")
+    for item in results:
+        result = item["analysis_result"]
+        analysis = result.get("analysis", {})
+        valuation = result.get("valuation", {})
+        diagnostics = valuation.get("diagnostics", {}).get("counts", {})
+        print(f"\n=== {item['case']} [{item['category']}]"
+              f"{f' seed={item["seed"]}' if item['seed'] is not None else ''} ===")
+        print(item["generated_ring"]["visible_text"])
+        print(f"Quality score: {analysis.get('quality_score_percent')}/100")
+        print(f"Poor stat combination: {analysis.get('poor_stat_combination')}")
+        print(f"Price: {valuation.get('low')} / {valuation.get('median')} / "
+              f"{valuation.get('high')} Pskulls (low / median / high)")
+        print(f"Ring status: {analysis.get('craft_type')} | quality={analysis.get('quality_score_percent')}/100")
+        print(f"Valuation phase: {valuation.get('valuation_phase')} | Phase 1 rate={valuation.get('phase1_rate')}")
+        print(f"Method: {valuation.get('valuation_method')}")
+        print(f"Confidence: {valuation.get('confidence')}")
+        print(f"Completed-sale comparables: {valuation.get('comparable_sales')} "
+              f"(eligible: {valuation.get('eligible_comparable_sales')})")
+        print(f"Close matches: {diagnostics.get('close_comparables')}; "
+              f"distant matches: {diagnostics.get('rejected_by_distance')}")
+        explanation = valuation.get("diagnostics", {}).get("phase_explanation", {})
+        print(f"Why this phase: {explanation.get('reason')}")
+        build_demand = valuation.get("diagnostics", {}).get("build_demand", {})
+        print(f"Build demand tier: {build_demand.get('demand_tier')} | "
+              f"matching builds: {build_demand.get('viable_profiles')}")
+        for build in valuation.get("diagnostics", {}).get("phase_explanation", {}).get("phase2", {}).get("builds_evaluated", []):
+            print(f"  {build.get('build')}: target fit={build.get('target_fit_score')}; "
+                  f"eligible build sales={build.get('eligible_sale_count')}")
+        print(f"Valuation explanation: {valuation.get('diagnostics', {}).get('note')}")
+        recommendation = valuation.get("diagnostics", {}).get("build_recommendation", {})
+        for match in recommendation.get("recommendations", []):
+            print(f"  Build fit: {match.get('build')}={match.get('fit_score')}/100 "
+                  f"targets={match.get('target_coverage')}; "
+                  f"stats={match.get('useful_stats')}")
+        detail_rows = valuation.get("diagnostics", {}).get("selected_comparables", [])
+        rows_to_show = detail_rows if item["case"] in DETAILED_ANALYSIS_CASES else detail_rows[:5]
+        for comparable in rows_to_show:
+            print(
+                "  comparable: "
+                f"id={comparable.get('observation_id')} "
+                f"sale={comparable.get('sale_price_display')} "
+                f"adjusted={comparable.get('adjusted_price_display')} "
+                f"distance={comparable.get('distance')} "
+                f"build={comparable.get('build')} "
+                f"target_fit={comparable.get('target_build_fit')} "
+                f"sale_fit={comparable.get('sale_build_fit')} "
+                f"weaker_gap={comparable.get('target_weaker_score_gap')} "
+                f"directional_penalty={comparable.get('directional_price_penalty')} "
+                f"weight={comparable.get('weight')}"
+            )
+            if item["case"] in DETAILED_ANALYSIS_CASES:
+                print(f"    sale_stats={json.dumps(comparable.get('stats', {}), sort_keys=True)}")
+                print(f"    build_distance_components={json.dumps(comparable.get('build_distance_components', {}), sort_keys=True)}")
+
+    output = {
+        "benchmark_cases": len(results),
+        "category_counts": {
+            category: sum(1 for item in results if item["category"] == category)
+            for category in ("random", "medium_score", "high_score_10_fcr", "class_profile", "phase2_regression")
+        },
+        "results": results,
+    }
+    output_path.write_text(
+        json.dumps(output, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print(f"\nFull results saved to: {output_path.resolve()}")
+    print("Synthetic rings were analyzed only; no database observations were added.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
