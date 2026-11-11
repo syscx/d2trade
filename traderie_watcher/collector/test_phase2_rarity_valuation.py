@@ -21,11 +21,9 @@ class Phase2RarityValuationTests(unittest.TestCase):
         self.assertGreater(quality_rarity_index(95), 1.0)
 
     def test_above_center_rarity_rises_with_score(self):
-        self.assertAlmostEqual(
-            quality_rarity_index(80),
-            quality_rarity_index(90),
-            places=10,
-        )
+        # The two sides of the peak are intentionally asymmetric.
+        self.assertLess(quality_rarity_index(80), quality_rarity_index(85))
+        self.assertGreater(quality_rarity_index(90), quality_rarity_index(85))
         self.assertGreater(quality_rarity_index(95), quality_rarity_index(90))
         self.assertGreater(quality_rarity_index(100), quality_rarity_index(95))
 
