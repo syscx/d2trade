@@ -41,7 +41,9 @@ AFFIX_IMPORTANCE = {
  "fcr":1.00, "mana_leech":0.90, "all_resist":0.85, "mana_per_kill":0.55,
  "fire_resist":0.85, "cold_resist":0.60, "lightning_resist":0.85, "poison_resist":0.50, "poison_length_reduced":0.35,
  "dexterity":0.75, "strength":0.90, "life_leech":0.95, "mana":0.55, "attack_rating":0.80,
- "life_replenish":0.12, "magic_find":0.20, "gold_find":0.08,\n "min_damage":1.00, "max_damage":1.00, "damage_reduced":0.12, "magic_damage_reduced":0.12,\n "energy":0.15, "defense":0.10, "fhr":0.25, "ias":0.65, "damage_to_mana":0.08, "life":0.65,
+ "life_replenish":0.12, "magic_find":0.20, "gold_find":0.08,
+ "min_damage":1.00, "max_damage":1.00, "damage_reduced":0.12, "magic_damage_reduced":0.12,
+ "energy":0.15, "defense":0.10, "fhr":0.25, "ias":0.65, "damage_to_mana":0.08, "life":0.65,
 }
 
 def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
@@ -64,7 +66,8 @@ def _affix_roll_quality(key: str, value: int) -> tuple[float, str]:
  maxima = {
   "mana":50, "mana_leech":6, "mana_per_kill":1, "dexterity":15,
   "strength":20, "life_leech":6, "magic_find":25, "gold_find":100,
-  "life_replenish":5, "min_damage":9, "max_damage":15, "damage_reduced":2,\n  "magic_damage_reduced": 2, "energy":15, "defense":100, "fhr":10, "ias":20, "damage_to_mana":12, "life":40, "all_resist":11, "fire_resist":30, "cold_resist":30,
+  "life_replenish":5, "min_damage":9, "max_damage":15, "damage_reduced":2,
+  "magic_damage_reduced": 2, "energy":15, "defense":100, "fhr":10, "ias":20, "damage_to_mana":12, "life":40, "all_resist":11, "fire_resist":30, "cold_resist":30,
   "lightning_resist":30, "poison_resist":30, "attack_rating":120,
   "poison_length_reduced":25,
  }
@@ -105,7 +108,8 @@ def score_ring_stats(stats: dict[str, int]) -> tuple[float, list[str]]:
   # Blood craft contributes up to 3% Life Leech and +5 Strength.
   # Any amount above those maxima is scored as an additional random affix.
   value=(max(0,raw_value-3) if key=="life_leech" else
-         max(0,raw_value-5) if key=="strength" else\n         max(0,raw_value-20) if key=="life" else raw_value)
+         max(0,raw_value-5) if key=="strength" else
+         max(0,raw_value-20) if key=="life" else raw_value)
   if key in {"life_leech","strength"} and value<=0:
    continue
   roll, explanation=_affix_roll_quality(key,value)
@@ -163,11 +167,13 @@ BUILD_PROFILES = {
  "melee": {
   # Melee values offensive stats most, while retaining defensive stats as
   # useful secondary affixes rather than treating them as unusable.
-  "attack_rating":1.00,"min_damage":1.00,"max_damage":1.00,\n  "life_leech":0.95,"mana_leech":0.70,"ias":0.90,
+  "attack_rating":1.00,"min_damage":1.00,"max_damage":1.00,
+  "life_leech":0.95,"mana_leech":0.70,"ias":0.90,
   "strength":0.90,"dexterity":0.85,"life":0.70,
   "all_resist":0.65,"lightning_resist":0.50,"fire_resist":0.45,
   "cold_resist":0.40,"poison_resist":0.30,"mana":0.20,
-  "mana_per_kill":0.20,"fcr":0.15,"damage_reduced":0.20,"magic_damage_reduced":0.20,\n  "defense":0.15,"fhr":0.20,"life_replenish":0.15,
+  "mana_per_kill":0.20,"fcr":0.15,"damage_reduced":0.20,"magic_damage_reduced":0.20,
+  "defense":0.15,"fhr":0.20,"life_replenish":0.15,
  },
  "general_caster": {
   "fcr":1.00,"mana":0.85,"mana_per_kill":0.80,"all_resist":0.80,
