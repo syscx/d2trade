@@ -15,7 +15,12 @@ PREFIX_AFFIXES = [
     ("cold_resist", lambda r: f"+{r.randint(1, 30)}% to Cold Resistance"),
     ("lightning_resist", lambda r: f"+{r.randint(1, 30)}% to Lightning Resistance"),
     ("poison_resist", lambda r: f"+{r.randint(1, 30)}% to Poison Resistance"),
-    ("attack_rating", lambda r: f"+{r.randint(1, 120)} to Attack Rating"),\n    ("min_damage", lambda r: f"+{r.randint(1, 9)} to Minimum Damage"),\n    ("max_damage", lambda r: f"+{r.randint(1, 15)} to Maximum Damage"),\n    ("damage_reduced", lambda r: f"Damage Reduced by {r.randint(1, 2)}"),\n    ("magic_damage_reduced", lambda r: f"Magic Damage Reduced by {r.randint(1, 2)}"),\n    ("life", lambda r: f"+{r.randint(1, 40)} to Life"),
+    ("attack_rating", lambda r: f"+{r.randint(1, 120)} to Attack Rating"),
+    ("min_damage", lambda r: f"+{r.randint(1, 9)} to Minimum Damage"),
+    ("max_damage", lambda r: f"+{r.randint(1, 15)} to Maximum Damage"),
+    ("damage_reduced", lambda r: f"Damage Reduced by {r.randint(1, 2)}"),
+    ("magic_damage_reduced", lambda r: f"Magic Damage Reduced by {r.randint(1, 2)}"),
+    ("life", lambda r: f"+{r.randint(1, 40)} to Life"),
 ]
 SUFFIX_AFFIXES = [
     ("fcr", lambda r: "10% Faster Cast Rate"),
@@ -23,7 +28,9 @@ SUFFIX_AFFIXES = [
     ("magic_find", lambda r: f"{r.randint(1, 25)}% Better Chance of Getting Magic Items"),
     ("gold_find", lambda r: f"{r.randint(1, 100)}% Extra Gold from Monsters"),
     ("life_replenish", lambda r: f"Replenish Life +{r.randint(1, 5)}"),
-    ("dexterity", lambda r: f"+{r.randint(1, 15)} to Dexterity"),\n    ("ias", lambda r: f"{r.randint(1, 20)}% Increased Attack Speed"),\n    ("fhr", lambda r: f"{r.randint(1, 10)}% Faster Hit Recovery"),
+    ("dexterity", lambda r: f"+{r.randint(1, 15)} to Dexterity"),
+    ("ias", lambda r: f"{r.randint(1, 20)}% Increased Attack Speed"),
+    ("fhr", lambda r: f"{r.randint(1, 10)}% Faster Hit Recovery"),
 ]
 
 def generate(seed=None, affix_count=None):
