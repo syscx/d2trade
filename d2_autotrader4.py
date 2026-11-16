@@ -792,19 +792,33 @@ def process_trading_workflow(context, image_path, task_id):
         print(f"[{task_id}] 5. 將網站 OCR 文字交給 Gemini 估價...")
         estimate = ask_gemini_to_price_only(ocr_text)
         if estimate and estimate.strip().casefold() != "unknown":
-            price_line = f"BIN: {estimate} (Valuation source: Gemini)"
+            price_line = f"BIN: {estimate} (Valuation source: Gemini; Attempt: 1)"
         else:
-            print(f"[{task_id}] Gemini valuation unavailable; trying embedded local valuation...")
-            local_result = None
-            if re.search(r"\bring\b", ocr_text, re.IGNORECASE):
-                local_result = ask_local_ring_valuation(ocr_title, ocr_description, task_id)
-            if local_result:
-                price_line = local_result["price_line"]
+            # Preserve the original two-pass Gemini behavior: the optimistic
+            # recommendation is the single retry. Only use local valuation if
+            # this second Gemini request also fails to return a usable result.
+            print(f"[{task_id}] Gemini first valuation failed; retrying Gemini once with recommended-price prompt...")
+            retry_estimate = ask_gemini_recommended_price(ocr_text)
+            retry_failed = (
+                not retry_estimate
+                or retry_estimate.strip().casefold() in {"unknown", "n/a", "error"}
+                or "manual review" in retry_estimate.casefold()
+                or "gemini unavailable" in retry_estimate.casefold()
+            )
+            if not retry_failed:
+                price_line = f"{retry_estimate} (Valuation source: Gemini; Attempt: 2)"
             else:
-                # Retain the previous Gemini recommendation only if local pricing
-                # cannot process the item or the local collector is unavailable.
-                price_line = ask_gemini_recommended_price(ocr_text)
-                price_line += " (Valuation source: Gemini fallback; local unavailable)"
+                print(f"[{task_id}] Gemini retry also failed; trying embedded local valuation...")
+                local_result = None
+                if re.search(r"\bring\b", ocr_text, re.IGNORECASE):
+                    local_result = ask_local_ring_valuation(ocr_title, ocr_description, task_id)
+                if local_result:
+                    price_line = local_result["price_line"]
+                else:
+                    price_line = (
+                        "Unknown from Gemini after 2 attempts; "
+                        "local valuation unavailable. Please self judge."
+                    )
         # Do not attempt form writes after an unexpected navigation.
         if page.is_closed() or "/posting.php?mode=post" not in page.url:
             raise RuntimeError(
