@@ -38,6 +38,80 @@ def start_embedded_collector():
         _embedded_modules[_module_name] = _module
     _server_module = _embedded_modules["_d2_embedded_collector_server"]
     _server_module.initialize()
+
+    # Report the exact Traderie database selected by the embedded collector.
+    # This is separate from d2_price_history.db (the Gemini price cache).
+    try:
+        _db_path = _server_module.DB_PATH.resolve()
+        with _server_module.connect() as _db:
+            _observation_count = _db.execute(
+                "SELECT COUNT(*) FROM observations"
+            ).fetchone()[0]
+            _listing_count = _db.execute(
+                "SELECT COUNT(*) FROM observations WHERE observation_type='listing_snapshot'"
+            ).fetchone()[0]
+            _ring_count = _db.execute(
+                "SELECT COUNT(*) FROM ring_analyses"
+            ).fetchone()[0]
+            _blood_ring_count = _db.execute(
+                "SELECT COUNT(*) FROM ring_analyses WHERE craft_type='blood_candidate'"
+            ).fetchone()[0]
+            _verified_sale_count = _db.execute(
+                "SELECT COUNT(*) FROM verified_sales WHERE verified=1"
+            ).fetchone()[0]
+            _completed_sale_count = 0
+            _completed_blood_ring_count = 0
+            _sale_rows = _db.execute(
+                """SELECT o.payload_json, ra.craft_type
+                   FROM observations o
+                   LEFT JOIN ring_analyses ra ON ra.observation_id=o.id
+                   WHERE o.observation_type='listing_snapshot'"""
+            ).fetchall()
+            for _sale_row in _sale_rows:
+                try:
+                    _saved = json.loads(_sale_row["payload_json"])
+                    _listing = _saved.get("listing") or {}
+                    if _server_module.is_completed_sale_listing(_listing):
+                        _completed_sale_count += 1
+                        if _sale_row["craft_type"] == "blood_candidate":
+                            _completed_blood_ring_count += 1
+                except (ValueError, TypeError, AttributeError):
+                    continue
+
+        print(f"[Local Valuator] Traderie SQLite database: {_db_path}")
+        print(
+            "[Local Valuator] Database records: "
+            f"observations={_observation_count}, "
+            f"listing_snapshots={_listing_count}, "
+            f"ring_analyses={_ring_count}, "
+            f"blood_ring_analyses={_blood_ring_count}, "
+            f"completed_sale_records={_completed_sale_count}, "
+            f"completed_blood_ring_records={_completed_blood_ring_count}, "
+            f"verified_sales={_verified_sale_count}"
+        )
+        if _observation_count == 0:
+            print(
+                "[Local Valuator] WARNING: This Traderie database is EMPTY. "
+                "Local valuation has no collected market history and cannot "
+                "produce a sale-backed median."
+            )
+        elif _completed_sale_count == 0:
+            print(
+                "[Local Valuator] WARNING: No completed-sale records were "
+                "recognized. Active asking listings are not treated as sales."
+            )
+        elif _completed_blood_ring_count == 0:
+            print(
+                "[Local Valuator] WARNING: No completed Blood Ring records "
+                "were recognized. Ring valuation may remain Unknown until "
+                "eligible completed-sale data is collected."
+            )
+    except Exception as _db_diag_error:
+        print(
+            "[Local Valuator] WARNING: Could not verify Traderie database "
+            f"contents: {type(_db_diag_error).__name__}: {_db_diag_error}"
+        )
+
     _httpd = _server_module.ThreadingHTTPServer(
         (_server_module.HOST, _server_module.PORT), _server_module.Handler
     )
