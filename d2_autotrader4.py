@@ -154,13 +154,30 @@ def ask_local_ring_valuation(title, visible_text, task_id):
         confidence = str(valuation.get("confidence") or "very_low").lower()
         phase = str(valuation.get("valuation_phase") or "unknown_phase")
         quality = valuation.get("quality_score_percent")
+        # The analyzer also reports random_affix_count; expose it as the
+        # quantity of recognized random affixes when the market estimate is
+        # too uncertain to display.
+        quantity = analysis.get("random_affix_count")
         display = (valuation.get("display") or {}).get("median")
         median_value = valuation.get("median")
         if confidence in ("low", "very_low") or median_value is None or not display:
+            if quality is not None:
+                try:
+                    score_number = float(quality)
+                    recommended_price = round(60.0 * score_number / 100.0, 2)
+                    score_text = f"{score_number:g}/100"
+                    recommendation_text = f"{recommended_price:g} Perfect Skulls"
+                except (TypeError, ValueError):
+                    score_text = f"{quality}/100"
+                    recommendation_text = "N/A"
+            else:
+                score_text = "N/A"
+                recommendation_text = "N/A"
+            quantity_text = quantity if quantity is not None else "N/A"
             price_line = (
-                "Unknown from local, please self judge from score "
-                f"(Local phase: {phase}; Confidence: {confidence}; "
-                f"Quality score: {quality if quality is not None else 'N/A'}/100)"
+                f"Score: {score_text}; Quantity: {quantity_text}; "
+                f"AI Recommend price: {recommendation_text} "
+                f"(Local phase: {phase}; Confidence: {confidence})"
             )
         else:
             price_line = (
