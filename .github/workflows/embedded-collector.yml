@@ -1,0 +1,23 @@
+name: Embedded collector bundle
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - feature/ring-phase2-single-file-integration
+
+jobs:
+  embedded-bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify generated collector is synchronized
+        run: python tools/build_embedded_collector.py --check
+      - name: Test source modules
+        run: |
+          python -m pip install pytest
+          python -m pytest -q traderie_watcher/collector/test_*.py tests/test_embedded_collector_build.py
