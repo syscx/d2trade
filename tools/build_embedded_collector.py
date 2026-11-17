@@ -42,7 +42,7 @@ def render_block() -> str:
         source = source_path.read_text(encoding="utf-8")
         # JSON string literals are valid Python literals and preserve Unicode,
         # quotes, backslashes, and every source newline exactly.
-        lines.append(f"        {json.dumps(module_name)}: {json.dumps(source)},")
+        lines.append(f"        {json.dumps(module_name, ensure_ascii=False)}: {json.dumps(source, ensure_ascii=False)},")
     lines.extend(("    }", END_LINE))
     return NL.join(lines) + NL
 
